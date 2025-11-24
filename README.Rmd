@@ -1,0 +1,29 @@
+---
+output: github_document
+always_allow_html: true
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r echo=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "README-"
+)
+```
+
+# feedR
+
+### An RShiny app for linear feed formulation
+
+Lorem ipsum dolores ahmet tacitus apollodorus servus est.
+
+
+
+### Data sources
+
+|Dataset|Source|Version|
+|---|---|---|
+|Feed ingredient composition|IAFFD|
+|Nutrient requirement|IAFFD|
