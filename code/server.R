@@ -22,8 +22,15 @@ server <- function(input, output, session) {
     f.dir <- c(">=", ">=")
     f.rhs <- c(input$protein_req, input$energy_req)
 
-    # Solve LP
-    result <- lp("min", f.obj, f.con, f.dir, f.rhs)
+
+    # Solve LP----
+    result <- lp(
+      "min",
+      f.obj,
+      f.con,
+      f.dir,
+      f.rhs
+      )
 
     if (result$status == 0) {
       amounts <- result$solution

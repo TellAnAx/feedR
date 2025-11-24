@@ -1,10 +1,4 @@
-library(shiny)
-library(lpSolve)
-library(readr)
-library(DT)
-
-
-
+source("dependencies.R")
 source("code/ui.R")
 source("code/server.R")
 
