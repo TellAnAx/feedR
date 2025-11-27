@@ -1,76 +1,123 @@
-# Load data----
-
 
 server <- function(input, output, session) {
-
-  # TABLE: All feed ingredients----
-  output$feed_table <- renderDT({
-    datatable(feed_data, selection = "multiple")  # Allow multiple row selection
+  
+  # Reactive filtered data based on Category
+  filtered_data <- reactive({
+    if (input$category_filter == "All") {
+      feed_data
+    } else {
+      feed_data[feed_data$Category == input$category_filter, ]
+    }
   })
-
-
-
-
-
-  # TABLE: Selected feed ingredients----
+  
+  # Persistent selection storage
+  selected_ingredients <- reactiveVal(data.frame())
+  
+  # Render feed table
+  output$feed_table <- renderDT({
+    datatable(
+      filtered_data()[, c("Ingredient", "Protein", "Lipid", "Carbohydrate", "Ash", "Energy")],
+      selection = "multiple",
+      options = list(pageLength = 10, autoWidth = TRUE)
+    )
+  })
+  
+  # Update persistent selection
+  observeEvent(input$feed_table_rows_selected, {
+    current_selection <- filtered_data()[input$feed_table_rows_selected, ]
+    previous_selection <- selected_ingredients()
+    updated_selection <- unique(rbind(previous_selection, current_selection))
+    selected_ingredients(updated_selection)
+  })
+  
+  # Clear selection
+  observeEvent(input$clear_selection, {
+    selected_ingredients(data.frame())
+  })
+  
+  # Render selected feed table
   output$selected_feed_table <- renderDT({
-    selected_rows <- input$feed_table_rows_selected
-    if (length(selected_rows) > 0) {
-      datatable(feed_data[selected_rows, ])
+    if (nrow(selected_ingredients()) > 0) {
+      datatable(selected_ingredients() %>% 
+                  mutate(Cost = 0), 
+                editable = TRUE)
     } else {
       datatable(data.frame(Message = "No ingredients selected"))
     }
   })
-
-
-
-
-
+  
+  # Formulation logic
   observeEvent(input$formulate, {
-
-
-
-    selected_rows <- input$feed_table_rows_selected
-
-    if (length(selected_rows) == 0) {
-      output$solution_text <- renderPrint({
-        cat("Please select at least one ingredient from the table.")
-      })
+    
+    if (nrow(selected_ingredients()) == 0) {
+      output$solution_text <- renderPrint({ cat("Please select at least one ingredient.") })
       return(NULL)
     }
-
-    # Filter feed_data based on selection
-    selected_feed <- feed_data[selected_rows, ]
-
-    # LP setup
-    f.obj <- rep(1, nrow(selected_feed))
-    f.con <- rbind(selected_feed$Protein, selected_feed$Energy)
-    f.dir <- c(">=", ">=")
-    f.rhs <- c(input$protein_req, input$energy_req)
-
-
-
-    # Solve LP----
-    result <- lp(
-      direction = "min",
-      objective.in = f.obj,
-      const.mat = f.con,
-      const.dir = f.dir,
-      const.rhs = f.rhs
-      )
-
+    
+    selected_feed <- selected_ingredients()
+    
+    # Nutrients and targets
+    nutrients <- c("Protein", "Lipid", "Carbohydrate", "Ash", "Energy")
+    targets <- c(input$protein_req, input$fat_req, input$carbohydrate_req, input$ash_req, input$energy_req)
+    n_ing <- nrow(selected_feed)
+    n_nut <- length(nutrients)
+    
+    if (input$least_cost) {
+      # Validate cost data
+      if (any(selected_feed$Cost == 0)) {
+        output$solution_text <- renderPrint({
+          cat("Least-cost formulation selected, but cost data is missing.\nPlease enter cost values.")
+        })
+        return(NULL)
+      }
+      
+      # Objective: minimize cost
+      f.obj <- selected_feed$Cost
+      f.con <- do.call(rbind, lapply(nutrients, function(n) selected_feed[[n]]))
+      f.dir <- rep(">=", n_nut)  # or mix of >= and <= if needed
+      f.rhs <- targets
+      
+      result <- lp("min", f.obj, f.con, f.dir, f.rhs)
+      
+    } else {
+      # Goal programming: minimize deviation from targets
+      # Variables: ingredient amounts + 2 deviations per nutrient
+      n_vars <- n_ing + 2 * n_nut
+      f.obj <- c(rep(0, n_ing), rep(1, 2 * n_nut))  # minimize sum of deviations
+      
+      # Build constraint matrix
+      f.con <- matrix(0, nrow = n_nut, ncol = n_vars)
+      for (i in 1:n_nut) {
+        f.con[i, 1:n_ing] <- selected_feed[[nutrients[i]]]  # ingredient contributions
+        f.con[i, n_ing + (2 * i - 1)] <- 1   # d+
+        f.con[i, n_ing + (2 * i)] <- -1      # d-
+      }
+      
+      f.dir <- rep("=", n_nut)
+      f.rhs <- targets
+      
+      result <- lp("min", f.obj, f.con, f.dir, f.rhs)
+    }
+    
+    # Output results
     if (result$status == 0) {
-      amounts <- result$solution
+      amounts <- result$solution[1:n_ing]
       names(amounts) <- selected_feed$Ingredient
       output$solution_text <- renderPrint({
-        cat("Optimal Feed Mix (kg):\n")
+        if (input$least_cost) {
+          cat("Optimal Least-Cost Feed Mix (kg):\n")
+        } else {
+          cat("Optimal Feed Mix (kg) minimizing nutrient deviation:\n")
+        }
         print(round(amounts, 2))
-        cat("\nTotal Feed Weight (kg):", round(result$objval, 2))
+        if (input$least_cost) {
+          cat("\nTotal Cost:", round(result$objval, 2))
+        } else {
+          cat("\nTotal Deviation:", round(result$objval, 2))
+        }
       })
     } else {
-      output$solution_text <- renderPrint({
-        cat("No feasible solution found. Try adjusting the requirements.")
-      })
+      output$solution_text <- renderPrint({ cat("No feasible solution found.") })
     }
   })
 }

@@ -12,15 +12,21 @@ feed_data <- read_csv("data/FICD 2025-10-27.csv") %>%
       str_starts(code, "62") ~ "mineral premix",
       str_starts(code, "70") ~ "additive"
     )
-  )
+  ) %>% 
+  select(
+    "category", "description", "crude  protein (%)", "crude lipids (%)", 
+    "total cho (%)","ash (%)",  "gross energy -mj (mj/kg)"
+    ) %>% 
+  rename(
+    Category = "category",
+    Ingredient = "description",
+    Protein = "crude  protein (%)",
+    Lipid = "crude lipids (%)",
+    Carbohydrate = "total cho (%)",
+    Ash = "ash (%)",
+    Energy = "gross energy -mj (mj/kg)"
+    )
 
-
-
-
-# Select relevant columns
-feed_data <- feed_data[, c("Description", "Crude  Protein (%)", "Gross Energy -MJ (MJ/kg)")]
-feed_data <- na.omit(feed_data)
-names(feed_data) <- c("Ingredient", "Protein", "Energy")
 
 test <- feed_data %>%
   mutate(
