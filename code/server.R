@@ -1,40 +1,67 @@
-# Load feed data
-feed_data <- read_csv("data/FICD 2025-10-27.csv")
-
-# Select relevant columns
-feed_data <- feed_data[, c("Description", "Crude  Protein (%)", "Gross Energy -MJ (MJ/kg)")]
-feed_data <- na.omit(feed_data)
-names(feed_data) <- c("Ingredient", "Protein", "Energy")
+# Load data----
 
 
 server <- function(input, output, session) {
 
+  # TABLE: All feed ingredients----
   output$feed_table <- renderDT({
-    datatable(feed_data)
+    datatable(feed_data, selection = "multiple")  # Allow multiple row selection
   })
 
-  observeEvent(input$formulate, {
-    # Objective: minimize total weight (no cost)
-    f.obj <- rep(1, nrow(feed_data))
 
-    # Nutrient matrix
-    f.con <- rbind(feed_data$Protein, feed_data$Energy)
+
+
+
+  # TABLE: Selected feed ingredients----
+  output$selected_feed_table <- renderDT({
+    selected_rows <- input$feed_table_rows_selected
+    if (length(selected_rows) > 0) {
+      datatable(feed_data[selected_rows, ])
+    } else {
+      datatable(data.frame(Message = "No ingredients selected"))
+    }
+  })
+
+
+
+
+
+  observeEvent(input$formulate, {
+
+
+
+    selected_rows <- input$feed_table_rows_selected
+
+    if (length(selected_rows) == 0) {
+      output$solution_text <- renderPrint({
+        cat("Please select at least one ingredient from the table.")
+      })
+      return(NULL)
+    }
+
+    # Filter feed_data based on selection
+    selected_feed <- feed_data[selected_rows, ]
+
+    # LP setup
+    f.obj <- rep(1, nrow(selected_feed))
+    f.con <- rbind(selected_feed$Protein, selected_feed$Energy)
     f.dir <- c(">=", ">=")
     f.rhs <- c(input$protein_req, input$energy_req)
 
 
+
     # Solve LP----
     result <- lp(
-      "min",
-      f.obj,
-      f.con,
-      f.dir,
-      f.rhs
+      direction = "min",
+      objective.in = f.obj,
+      const.mat = f.con,
+      const.dir = f.dir,
+      const.rhs = f.rhs
       )
 
     if (result$status == 0) {
       amounts <- result$solution
-      names(amounts) <- feed_data$Ingredient
+      names(amounts) <- selected_feed$Ingredient
       output$solution_text <- renderPrint({
         cat("Optimal Feed Mix (kg):\n")
         print(round(amounts, 2))

@@ -10,6 +10,7 @@ ui <- fluidPage(
 
     mainPanel(
       DTOutput("feed_table"),
+      DTOutput("selected_feed_table"),
       verbatimTextOutput("solution_text")
     )
   )
