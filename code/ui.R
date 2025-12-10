@@ -1,41 +1,32 @@
-
 ui <- fluidPage(
-  titlePanel("Feed Formulation"),
-  sidebarLayout(
-    sidebarPanel(
-      
-      wellPanel(
-        h4("Ingredient Filters & Options"),
-        selectInput("category_filter", "Filter by Category:",
-                    choices = c("All", unique(feed_data$Category)),
-                    selected = "All")
-      ),
-      
-      wellPanel(
-        h4("Targeted Nutrient Composition"),
-        numericInput("protein_req", "Protein (%)", value = 20, min = 0, max = 100),
-        numericInput("fat_req", "Fat (%)", value = 5, min = 0, max = 100),
-        numericInput("carbohydrate_req", "Carbohydrate (%)", value = 8, min = 0, max = 100),
-        numericInput("ash_req", "Ash (%)", value = 6, min = 0, max = 100),
-        tags$br(),
-        numericInput("energy_req", "Energy (MJ/kg)", value = 12, min = 0, max = 100),
-        tags$br(),
-        checkboxInput("least_cost", "Perform Least-Cost Formulation", value = FALSE),
-        actionButton("formulate", "Formulate"),
-        actionButton("clear_selection", "Clear Selection")
-        
-      )
+  
+  # HEADER----
+  titlePanel(
+    title = "FeedR: Linear Feed Formulation with R",
+    windowTitle = "FeedR"
     ),
-    
-    mainPanel(
-      h3("Available Ingredients"),
-      DTOutput("feed_table"),
-      
-      h3("Selected Ingredients"),
-      DTOutput("selected_feed_table"),
-      
-      h3("Solution"),
-      verbatimTextOutput("solution_text")
-    )
+  
+  
+  # TABS----
+  tabsetPanel(
+    # tabPanel("Simplified", ui_summary("summary")),
+    tabPanel("Full", ui_full("full"))
+    # tabPanel("FAQ", ui_faq("faq"))
+  ),
+  
+  
+  # FOOTER----
+  tags$br(), tags$br(),
+  tags$text("You are using FeedR v0.0.1"),
+  tags$br(),
+  tags$b("Written by:"),
+  tags$a(href = "https://anil.tellbuescher.online", "Anıl Axel Tellbüscher"),
+  tags$text(", University of South Bohemia, Czech Republic."),
+  tags$br(),
+  tags$b("Reporting issues:"),
+  tags$text("Please report issues via"),
+  tags$a(href = "https://github.com/TellAnAx/feedR/issues", "GitHub"),
+  tags$text(" or contact the admin via email:"),
+  tags$a(href = "mailto:admin@tellbuescher.online", "admin@tellbuescher.online"),
+  tags$br(), tags$br()
   )
-)

@@ -18,20 +18,38 @@ feed_data <- read_csv("data/FICD 2025-10-27.csv") %>%
     "total cho (%)","ash (%)",  "gross energy -mj (mj/kg)"
     ) %>% 
   rename(
-    Category = "category",
-    Ingredient = "description",
-    Protein = "crude  protein (%)",
-    Lipid = "crude lipids (%)",
-    Carbohydrate = "total cho (%)",
-    Ash = "ash (%)",
-    Energy = "gross energy -mj (mj/kg)"
+    category = "category",
+    ingredient = "description",
+    protein = "crude  protein (%)",
+    lipid = "crude lipids (%)",
+    carbohydrate = "total cho (%)",
+    ash = "ash (%)",
+    energy = "gross energy -mj (mj/kg)"
     )
 
+print("Feed data successfully loaded!")
+print(head(feed_data))
 
-test <- feed_data %>%
-  mutate(
-    part1 = str_split_fixed(Ingredient, ",", 2)[, 1],
-    part2 = str_split_fixed(Ingredient, ",", 2)[, 2] %>% str_trim()
+
+feed_data_summarised <- feed_data %>% 
+  group_by(category) %>% 
+  summarise(
+    protein = mean(protein, na.rm = TRUE),
+    lipid = mean(lipid, na.rm = TRUE),
+    carbohydrate = mean(carbohydrate, na.rm = TRUE),
+    ash = mean(ash, na.rm = TRUE),
+    energy = mean(energy, na.rm = TRUE)
   )
 
-unique(test$part1)
+print("Feed data successfully summarised!")
+print(head(feed_data_summarised))
+
+
+# test <- feed_data %>%
+#   mutate(
+#     part1 = str_split_fixed(ingredient, ",", 2)[, 1],
+#     part2 = str_split_fixed(ingredient, ",", 2)[, 2] %>% str_trim()
+#   )
+# 
+# unique(test$part1)
+
