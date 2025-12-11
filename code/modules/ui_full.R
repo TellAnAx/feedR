@@ -1,19 +1,18 @@
-
 ui_full <- function(id) {
   ns <- NS(id)
-  
+
   fluidPage(
-    
+
     sidebarLayout(
       sidebarPanel(
-        
+
         wellPanel(
           h4("Ingredient Filters & Options"),
           selectInput(ns("category_filter"), "Filter by Category:",
-                      choices = c("All", unique(feed_data$category)),
+                      choices = c("All", unique(feed_data$category1)),
                       selected = "All")
         ),
-        
+
         wellPanel(
           h4("Targeted Nutrient Composition"),
           numericInput(ns("protein_req"), "Protein (%)", value = 20, min = 0, max = 100),
@@ -26,17 +25,17 @@ ui_full <- function(id) {
           checkboxInput(ns("least_cost"), "Perform Least-Cost Formulation", value = FALSE),
           actionButton(ns("formulate"), "Formulate"),
           actionButton(ns("clear_selection"), "Clear Selection")
-          
+
         )
       ),
-      
+
       mainPanel(
         h3("Available Ingredients"),
         DTOutput(ns("feed_table")),
-        
+
         h3("Selected Ingredients"),
         DTOutput(ns("selected_feed_table")),
-        
+
         h3("Solution"),
         verbatimTextOutput(ns("solution_text"))
       )
