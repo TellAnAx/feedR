@@ -59,7 +59,9 @@ server_import <- function(id) {
       available_data = imported_data,
       label_col = "ingredient",
       label_title = "Ingredient",
-      empty_message = "Upload a CSV file to see your ingredients here."
+      empty_message = "Upload a CSV file to see your ingredients here.",
+      tab_title = "Import",
+      data_source = reactive(paste("Uploaded file", input$file$name))
     )
 
     # A new file replaces the ingredient list, so the old selection is void

@@ -15,10 +15,14 @@
 # =============================================================================
 
 
+# File of the feed ingredient database (also named in PDF reports)
+FEED_DATA_FILE <- "data/FICD 2025-10-27.csv"
+
+
 # IAFFD - full----
 # Categories are derived from the first digit(s) of the FICD ingredient code.
-log_info("data", "Reading feed ingredient database data/FICD 2025-10-27.csv")
-feed_data <- read_csv("data/FICD 2025-10-27.csv", show_col_types = FALSE) %>%
+log_info("data", "Reading feed ingredient database ", FEED_DATA_FILE)
+feed_data <- read_csv(FEED_DATA_FILE, show_col_types = FALSE) %>%
   rename_with(str_to_lower) %>%
   mutate(
     category1 = case_when(

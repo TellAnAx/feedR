@@ -33,7 +33,9 @@ server_full <- function(id) {
       available_data = filtered_data,
       label_col = "ingredient",
       label_title = "Ingredient",
-      show_selected_nutrients = FALSE  # already shown in the available table
+      show_selected_nutrients = FALSE,  # already shown in the available table
+      tab_title = "Full",
+      data_source = basename(FEED_DATA_FILE)
     )
   })
 }

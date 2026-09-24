@@ -25,7 +25,12 @@ jobs:
             any::lpSolve
             any::tidyverse
             any::DT
+            any::gridExtra
             any::testthat
+
+      # pdftotext lets the report tests check the text of generated PDFs
+      - name: Install poppler-utils
+        run: sudo apt-get install -y poppler-utils
 
       - name: Run tests
         run: Rscript tests/run_tests.R

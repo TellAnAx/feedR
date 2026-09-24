@@ -32,6 +32,7 @@ server_manual <- function(id) {
     parts <- reactiveVal(empty_parts)
     ingredients <- reactiveVal(empty_ingredients)
     solution <- reactiveVal(NULL)
+    report <- reactiveVal(NULL)  # snapshot for the PDF report
     next_key <- reactiveVal(1)  # counter for unique part keys
 
     # The tables are only re-rendered when these counters change (rows or
@@ -348,10 +349,18 @@ server_manual <- function(id) {
           log_context = log_ctx
         )
         solution(format_solution(result))
+        report(new_formulation_report(
+          result, current, "ingredient", "Manual",
+          data_source = "Composition parts and ingredients entered by hand",
+          nutrients = current_parts$key, nutrient_labels = current_parts$name
+        ))
         return()
       }
+      report(NULL)  # the displayed message is not a formulation
       log_warn(log_ctx, "Formulation not started: ", solution()[1])
     })
+
+    setup_report_download(output, session, report, log_ctx)
 
     output$solution_text <- renderPrint({
       req(solution())
@@ -363,6 +372,7 @@ server_manual <- function(id) {
       parts(empty_parts)
       ingredients(empty_ingredients)
       solution(NULL)
+      report(NULL)
       bump(parts_version)
       bump(ingredients_version)
     })

@@ -19,8 +19,9 @@ Every target can optionally be given a maximum; the target is then
 treated as a minimum and the mix must lie within that range. If the
 requirements cannot be met, the app explains which of them conflict.
 Each ingredient can also be given a minimum and/or maximum inclusion
-rate (% of the mix). The FAQ tab of the app explains the mathematical
-model in detail.
+rate (% of the mix). After each calculation, a PDF report with all
+inputs and the calculated formulation can be downloaded. The FAQ tab of
+the app explains the mathematical model in detail.
 
 ### Tabs
 
@@ -51,7 +52,7 @@ downloaded on the Import tab (it is also in
 ### Running the app
 
 ``` r
-install.packages(c("shiny", "lpSolve", "tidyverse", "DT"))
+install.packages(c("shiny", "lpSolve", "tidyverse", "DT", "gridExtra"))
 shiny::runApp()  # from the repository root
 ```
 
@@ -85,17 +86,18 @@ status if a test fails. On GitHub, the workflow
 `.github/workflows/tests.yaml` runs the suite on every push and pull
 request.
 
-| Test file                       | Covers                                                                                                        |
-|---------------------------------|---------------------------------------------------------------------------------------------------------------|
-| `test-logging.R`                | log levels, message format, `log_object()`, `fmt_num()`, `fmt_num_each()`                                     |
-| `test-parse_decimal.R`          | `parse_decimal()`                                                                                             |
-| `test-add_to_selection.R`       | `add_to_selection()`                                                                                          |
-| `test-checks.R`                 | `check_bounds()`, `check_inclusion_limits()`, `validate_optional_value()`                                     |
-| `test-formulate_feed.R`         | `formulate_feed()`: both modes, ranges, inclusion limits, the exact arguments passed to `lp()`, solver errors |
-| `test-diagnose_infeasibility.R` | `diagnose_infeasibility()`, `lp_status_text()`                                                                |
-| `test-format_solution.R`        | `format_solution()`, `inclusion_limit_notes()`                                                                |
-| `test-read_ingredient_csv.R`    | `read_ingredient_csv()` and the downloadable CSV template                                                     |
-| `test-ui_helpers.R`             | `column_titles()`, `target_input_row()`, nutrient and editing constants                                       |
+| Test file                       | Covers                                                                                                                                              |
+|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `test-logging.R`                | log levels, message format, `log_object()`, `fmt_num()`, `fmt_num_each()`                                                                           |
+| `test-parse_decimal.R`          | `parse_decimal()`                                                                                                                                   |
+| `test-add_to_selection.R`       | `add_to_selection()`                                                                                                                                |
+| `test-checks.R`                 | `check_bounds()`, `check_inclusion_limits()`, `validate_optional_value()`                                                                           |
+| `test-formulate_feed.R`         | `formulate_feed()`: both modes, ranges, inclusion limits, the exact arguments passed to `lp()`, solver errors                                       |
+| `test-diagnose_infeasibility.R` | `diagnose_infeasibility()`, `lp_status_text()`                                                                                                      |
+| `test-format_solution.R`        | `format_solution()`, `inclusion_limit_notes()`                                                                                                      |
+| `test-read_ingredient_csv.R`    | `read_ingredient_csv()` and the downloadable CSV template                                                                                           |
+| `test-report.R`                 | report snapshot, report tables, PDF layout helpers, and the generated PDFs (their text is checked with `pdftotext` when poppler-utils is installed) |
+| `test-ui_helpers.R`             | `column_titles()`, `target_input_row()`, nutrient and editing constants                                                                             |
 
 `helper-load.R` loads the code without starting the app (and without the
 ingredient database); `helper-fixtures.R` provides small ingredient
@@ -110,6 +112,7 @@ another `test-*.R` file in `tests/testthat/`.
       logging.R                console logging helpers (log_info(), log_debug(), ...)
       data_prep.R              loads the ingredient database (feed_data, feed_data_summarised)
       helper_functions.R       LP formulation, selection handling, CSV import, output formatting
+      report.R                 PDF report (drawn with grid/gridExtra, no LaTeX needed)
       ui.R / server.R          top-level UI and server combining the tabs
       modules/
         formulation.R          shared UI and server logic of all formulation tabs
@@ -152,6 +155,8 @@ input, call these helpers and display their results.
 | `lp_status_text()`                                                       | Human-readable lpSolve status code                                                                                 | `formulate_feed()`, `diagnose_infeasibility()`                                           |
 | `format_solution()`                                                      | Turns the result into the text shown under *Solution*                                                              | `setup_formulation()`, `server_manual()`                                                 |
 | `inclusion_limit_notes()`                                                | The `[min 2 %, max 60 %, max reached]` notes in the solution                                                       | `format_solution()`                                                                      |
+| `new_formulation_report()`                                               | Snapshot of inputs and result for the PDF report (`code/report.R`)                                                 | `setup_formulation()`, `server_manual()`                                                 |
+| `write_formulation_report()`                                             | Draws the PDF report (tables via `report_*_table()`, page layout via `draw_blocks()`)                              | `setup_report_download()`                                                                |
 | `log_info()`, `log_debug()`, `log_warn()`, `log_error()`, `log_object()` | Console logging                                                                                                    | everywhere                                                                               |
 | `fmt_num()`, `fmt_num_each()`                                            | Compact number formatting for messages                                                                             | everywhere                                                                               |
 
@@ -210,8 +215,10 @@ formulate_feed(ingredients,
       |     |- lp("min", f.obj, f.con, f.dir, f.rhs)
       |     |- status 0 -> inclusion rates + achieved composition
       |     '- status 2 -> diagnose_infeasibility()      (scenario 5)
-      '- format_solution(result)                         -> "Solution" box
-            '- inclusion_limit_notes()
+      |- format_solution(result)                         -> "Solution" box
+      |     '- inclusion_limit_notes()
+      '- new_formulation_report(result, ...)             -> "Download PDF report" button
+            '- on download: write_formulation_report()
 
 **5. No feasible solution.** `diagnose_infeasibility()` narrows down the
 cause with small auxiliary linear programs (see below) and returns the

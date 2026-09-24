@@ -8,7 +8,7 @@
 #   main:    [tab-specific content] + available ingredients table
 #            + selected ingredients table (only cost and min./max. inclusion
 #              are editable)
-#            + solution
+#            + solution + PDF report download
 #
 # The tabs differ only in where the "available ingredients" come from. Each
 # tab module therefore calls formulation_ui() in its UI function and
@@ -65,7 +65,8 @@ formulation_ui <- function(id, sidebar_top = NULL, main_top = NULL) {
         DTOutput(ns("selected_feed_table")),
 
         h3("Solution"),
-        verbatimTextOutput(ns("solution_text"))
+        verbatimTextOutput(ns("solution_text")),
+        uiOutput(ns("report_button"))
       )
     )
   )
@@ -106,6 +107,9 @@ target_input_row <- function(ns, nutrient, label, value) {
 #' @param label_col name of the column that identifies an ingredient.
 #' @param label_title column header used for `label_col`.
 #' @param empty_message message shown when `available_data()` is empty.
+#' @param tab_title name of the tab, shown in the PDF report.
+#' @param data_source description of where the ingredients come from, shown
+#'   in the PDF report: a string, a reactive returning one, or NULL.
 #' @param show_selected_nutrients whether the selected-ingredients table shows
 #'   the nutrient columns. They are always kept in the data (the formulation
 #'   needs them); hiding them only avoids repeating the values already shown
@@ -118,7 +122,9 @@ setup_formulation <- function(input, output, session, available_data,
                               label_col = "ingredient",
                               label_title = "Ingredient",
                               empty_message = "No ingredients available.",
-                              show_selected_nutrients = TRUE) {
+                              show_selected_nutrients = TRUE,
+                              tab_title = log_ctx,
+                              data_source = NULL) {
 
   # Module id (e.g. "full"), used to tag log messages
   log_ctx <- sub("-$", "", session$ns(""))
@@ -129,6 +135,8 @@ setup_formulation <- function(input, output, session, available_data,
   # most recent formulation result or message.
   selected_ingredients <- reactiveVal(NULL)
   solution <- reactiveVal(NULL)
+  # Snapshot for the PDF report, set when a formulation is calculated
+  report <- reactiveVal(NULL)
   # Incremented whenever the selected-ingredients table must be re-drawn
   # (rows added/removed, invalid edit reverted). Valid cost edits are already
   # shown by the browser, so they do not re-render the table; this keeps
@@ -142,6 +150,7 @@ setup_formulation <- function(input, output, session, available_data,
     selected_ingredients(NULL)
     selection_version(selection_version() + 1)
     solution(NULL)
+    report(NULL)
     selectRows(feed_proxy, NULL)
   }
 
@@ -288,8 +297,13 @@ setup_formulation <- function(input, output, session, available_data,
                                label_col = label_col,
                                log_context = log_ctx)
       solution(format_solution(result))
+      report(new_formulation_report(
+        result, selection, label_col, tab_title,
+        data_source = if (is.function(data_source)) data_source() else data_source
+      ))
       return()
     }
+    report(NULL)  # the displayed message is not a formulation
     log_warn(log_ctx, "Formulation not started: ", solution()[1])
   })
 
@@ -298,7 +312,44 @@ setup_formulation <- function(input, output, session, available_data,
     cat(solution(), sep = "\n")
   })
 
+  setup_report_download(output, session, report, log_ctx)
+
   list(clear = clear, selection = reactive(selected_ingredients()))
+}
+
+
+#' Download button and handler for the PDF report
+#'
+#' The button (output "report_button", placed in the UI with
+#' uiOutput(ns("report_button"))) is only shown once `report()` holds a
+#' report, i.e. after a formulation was calculated.
+#'
+#' @param output,session the module's Shiny objects.
+#' @param report reactive returning a report from new_formulation_report()
+#'   or NULL.
+#' @param log_ctx tag used in log messages.
+setup_report_download <- function(output, session, report, log_ctx) {
+  output$report_button <- renderUI({
+    req(report())
+    downloadButton(session$ns("download_report"), "Download PDF report",
+                   class = "btn-sm")
+  })
+
+  output$download_report <- downloadHandler(
+    filename = function() report_file_name(report()),
+    content = function(file) {
+      log_info(log_ctx, "Writing PDF report (", report()$tab, " tab)")
+      pages <- tryCatch(
+        write_formulation_report(file, report()),
+        error = function(e) {
+          log_error(log_ctx, "PDF report failed: ", conditionMessage(e))
+          stop(e)
+        }
+      )
+      log_info(log_ctx, "PDF report written: ", pages, " page(s)")
+    },
+    contentType = "application/pdf"
+  )
 }
 
 

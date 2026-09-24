@@ -84,7 +84,8 @@ ui_manual <- function(id) {
                      class = "btn-sm"),
 
         h3("Solution"),
-        verbatimTextOutput(ns("solution_text"))
+        verbatimTextOutput(ns("solution_text")),
+        uiOutput(ns("report_button"))
       )
     )
   )

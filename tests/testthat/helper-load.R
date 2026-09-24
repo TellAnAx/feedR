@@ -12,6 +12,7 @@ app_root <- normalizePath(file.path("..", ".."))
 suppressPackageStartupMessages(source(file.path(app_root, "dependencies.R"), local = TRUE))
 source(file.path(app_root, "code", "logging.R"), local = TRUE)
 source(file.path(app_root, "code", "helper_functions.R"), local = TRUE)
+source(file.path(app_root, "code", "report.R"), local = TRUE)
 source(file.path(app_root, "code", "modules", "formulation.R"), local = TRUE)
 
 # Keep test output clean; logging tests raise the level where needed

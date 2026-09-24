@@ -189,6 +189,17 @@ ui_faq <- function(id) {
                 "amino acids, minerals, digestibility etc. are not.")
       ),
 
+      h3("Can I save the results?"),
+      p(
+        "Yes. After clicking", tags$em("Formulate,"), "a", tags$em("Download PDF report"),
+        "button appears below the solution. The report contains all inputs",
+        "(nutrient targets and maximums, selected ingredients with their",
+        "nutrient values, costs and inclusion limits) and the calculated",
+        "formulation, or the explanation why no solution was found. It",
+        "always reflects the most recent calculation: after changing inputs,",
+        "click", tags$em("Formulate"), "again before downloading."
+      ),
+
       h3("How do I enter ingredient costs?"),
       p(
         "Select ingredients in the Available Ingredients table, then",

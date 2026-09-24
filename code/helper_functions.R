@@ -19,6 +19,9 @@
 
 # Constants -------------------------------------------------------------------
 
+#' App version, shown in the footer and in PDF reports.
+FEEDR_VERSION <- "0.0.1"
+
 #' Nutrient columns used in the formulation (in this order).
 #' Every ingredient table (built-in or imported) must contain these columns.
 NUTRIENTS <- c("protein", "lipid", "carbohydrate", "ash", "energy")

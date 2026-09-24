@@ -19,6 +19,7 @@ log_info("app", "Starting FeedR (log level ", current_log_level(), ")")
 
 source("code/data_prep.R")
 source("code/helper_functions.R")
+source("code/report.R")
 
 source("code/modules/formulation.R")
 

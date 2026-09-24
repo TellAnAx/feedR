@@ -14,7 +14,9 @@ server_summary <- function(id) {
       available_data = reactive(feed_data_summarised),
       label_col = "category1",
       label_title = "Category",
-      show_selected_nutrients = FALSE  # already shown in the available table
+      show_selected_nutrients = FALSE,  # already shown in the available table
+      tab_title = "Simplified",
+      data_source = paste("Category means of", basename(FEED_DATA_FILE))
     )
   })
 }

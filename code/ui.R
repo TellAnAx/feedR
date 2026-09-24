@@ -33,7 +33,7 @@ ui <- fluidPage(
   tags$footer(
     class = "app-footer",
     div(
-      tags$text("You are using FeedR v0.0.1"),
+      tags$text(paste0("You are using FeedR v", FEEDR_VERSION)),
       tags$br(),
       tags$b("Written by:"),
       tags$a(href = "https://anil.tellbuescher.online", "Anıl Axel Tellbüscher"),
