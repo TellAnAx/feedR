@@ -82,6 +82,38 @@ Reduce the detail with `options(feedr.log_level = "INFO")` (or `WARN`,
 `ERROR`) before starting the app, or set the environment variable
 `FEEDR_LOG_LEVEL`.
 
+### Testing
+
+All helper functions are covered by a [testthat](https://testthat.r-lib.org/)
+suite in `tests/testthat/`. Run it from the repository root with
+
+```sh
+Rscript tests/run_tests.R
+```
+
+or, in an R session started in the repository root,
+`testthat::test_dir("tests/testthat")`. The script exits with a non-zero
+status if a test fails. On GitHub, the workflow
+`.github/workflows/tests.yaml` runs the suite on every push and pull
+request.
+
+| Test file | Covers |
+|---|---|
+| `test-logging.R` | log levels, message format, `log_object()`, `fmt_num()`, `fmt_num_each()` |
+| `test-parse_decimal.R` | `parse_decimal()` |
+| `test-add_to_selection.R` | `add_to_selection()` |
+| `test-checks.R` | `check_bounds()`, `check_inclusion_limits()`, `validate_optional_value()` |
+| `test-formulate_feed.R` | `formulate_feed()`: both modes, ranges, inclusion limits, the exact arguments passed to `lp()`, solver errors |
+| `test-diagnose_infeasibility.R` | `diagnose_infeasibility()`, `lp_status_text()` |
+| `test-format_solution.R` | `format_solution()`, `inclusion_limit_notes()` |
+| `test-read_ingredient_csv.R` | `read_ingredient_csv()` and the downloadable CSV template |
+| `test-ui_helpers.R` | `column_titles()`, `target_input_row()`, nutrient and editing constants |
+
+`helper-load.R` loads the code without starting the app (and without the
+ingredient database); `helper-fixtures.R` provides small ingredient tables
+whose solutions can be checked by hand. To add tests, create another
+`test-*.R` file in `tests/testthat/`.
+
 ### Code structure
 
 ```
@@ -99,6 +131,10 @@ code/
     ui_import.R, server_import.R     "Import" tab
     ui_manual.R, server_manual.R     "Manual" tab
     ui_faq.R                         "FAQ" tab
+tests/
+  run_tests.R              runs the test suite (used by CI)
+  testthat/                helper-*.R (loading, fixtures) and test-*.R files
+.github/workflows/tests.yaml   runs the tests on GitHub
 data/                      feed ingredient composition database (CSV)
 data/templates/            CSV template offered on the Import tab
 www/style.css              custom styling
