@@ -60,13 +60,15 @@ parse_decimal <- function(x) {
 #' the user has entered are preserved.
 #'
 #' @param selection data.frame with the current selection (columns
-#'   `label_col`, NUTRIENTS, `cost`), or NULL if nothing is selected yet.
+#'   `label_col`, NUTRIENTS, `cost`, `max_inclusion`), or NULL if nothing is
+#'   selected yet.
 #' @param picked data.frame of ingredients to add (rows of an ingredient table).
-#'   If it contains a `cost` column, those values are used as initial costs;
-#'   otherwise the cost starts out as NA (= not yet entered).
+#'   If it contains `cost` / `max_inclusion` columns, those values are used
+#'   as initial values; otherwise they start out as NA (= not entered).
 #' @param label_col name of the column that identifies an ingredient
 #'   (e.g. "ingredient" or "category1").
-#' @return data.frame with columns `label_col`, NUTRIENTS and `cost`.
+#' @return data.frame with columns `label_col`, NUTRIENTS, `cost` and
+#'   `max_inclusion` (maximum inclusion rate in % of the mix, NA = no limit).
 add_to_selection <- function(selection, picked, label_col) {
   new <- as.data.frame(picked)
   if (!is.null(selection)) {
@@ -74,11 +76,11 @@ add_to_selection <- function(selection, picked, label_col) {
   }
 
   new_rows <- new[, c(label_col, NUTRIENTS), drop = FALSE]
-  new_rows$cost <- if ("cost" %in% names(new)) {
-    as.numeric(new$cost)
-  } else {
-    rep(NA_real_, nrow(new))
+  optional_col <- function(col) {
+    if (col %in% names(new)) as.numeric(new[[col]]) else rep(NA_real_, nrow(new))
   }
+  new_rows$cost <- optional_col("cost")
+  new_rows$max_inclusion <- optional_col("max_inclusion")
 
   combined <- if (is.null(selection)) new_rows else rbind(selection, new_rows)
   rownames(combined) <- NULL
@@ -106,10 +108,26 @@ check_bounds <- function(targets, maxima, labels) {
   if (any(bad)) {
     problems <- c(problems, sprintf(
       "%s: the maximum (%s) is smaller than the minimum (%s).",
-      labels[bad], fmt_num(maxima[bad]), fmt_num(targets[bad])
+      labels[bad], fmt_num_each(maxima[bad]), fmt_num_each(targets[bad])
     ))
   }
   problems
+}
+
+
+#' Check per-ingredient maximum inclusion rates before formulating
+#'
+#' @param max_inclusion numeric vector of maximum inclusion rates in % of the
+#'   mix (NA = no limit).
+#' @param ingredient_names names of the ingredients (same order).
+#' @return character vector of problems (empty if everything is fine).
+check_inclusion_limits <- function(max_inclusion, ingredient_names) {
+  bad <- !is.na(max_inclusion) & (max_inclusion < 0 | max_inclusion > 100)
+  if (any(bad)) {
+    return(sprintf("%s: the maximum inclusion rate (%s %%) must be between 0 and 100 %%.",
+                   ingredient_names[bad], fmt_num_each(max_inclusion[bad])))
+  }
+  character()
 }
 
 
@@ -123,6 +141,10 @@ check_bounds <- function(targets, maxima, labels) {
 #' Every nutrient j has a target t_j and optionally a maximum u_j. If a
 #' maximum is set, the target is treated as a minimum and the nutrient must
 #' lie in the range t_j <= sum_i a_ij x_i <= u_j (a hard constraint).
+#'
+#' Every ingredient can also have a maximum inclusion rate (column
+#' `max_inclusion`, in % of the mix, NA = no limit), which adds the hard
+#' constraint x_i <= max_inclusion_i / 100 to both models.
 #'
 #' Two models are available (see also the FAQ tab):
 #'
@@ -148,8 +170,8 @@ check_bounds <- function(targets, maxima, labels) {
 #' (see diagnose_infeasibility()). Solver errors are caught and returned the
 #' same way, so this function does not fail on bad input combinations.
 #'
-#' @param ingredients data.frame with columns `label_col`, `nutrients` and
-#'   (for least-cost formulation) `cost`.
+#' @param ingredients data.frame with columns `label_col`, `nutrients`,
+#'   (for least-cost formulation) `cost` and optionally `max_inclusion`.
 #' @param targets named numeric vector of targets, names = `nutrients`.
 #' @param maxima named numeric vector of optional maxima, names = `nutrients`,
 #'   NA = no maximum. NULL means no maxima at all.
@@ -165,6 +187,8 @@ check_bounds <- function(targets, maxima, labels) {
 #'   * `feasible`: TRUE if the solver found an optimal solution,
 #'   * `mode`: "least_cost" or "target_matching",
 #'   * `inclusion`: named vector of inclusion fractions (sums to 1),
+#'   * `inclusion_limits`: named vector of maximum inclusion fractions
+#'     (NA = no limit),
 #'   * `targets`, `maxima`, `achieved`: named nutrient vectors,
 #'   * `labels`: display names of the nutrients,
 #'   * `total_cost`: cost of 1 kg of the mix (NA if costs are missing),
@@ -202,38 +226,59 @@ formulate_feed <- function(ingredients, targets, maxima = NULL,
   range_con <- rbind(A[ranged, , drop = FALSE], A[ranged, , drop = FALSE])
   range_dir <- c(rep(">=", sum(ranged)), rep("<=", sum(ranged)))
   range_rhs <- c(targets[ranged], maxima[ranged])
-  range_names <- c(paste(nutrient_labels[ranged], "(min)"),
-                   paste(nutrient_labels[ranged], "(max)"))
+  # (sprintf, unlike paste, returns nothing for an empty selection)
+  range_names <- c(sprintf("%s (min)", nutrient_labels[ranged]),
+                   sprintf("%s (max)", nutrient_labels[ranged]))
   mass_balance <- rep(1, n_ing)  # sum of inclusion rates = 1 (i.e. 100 %)
+
+  # Maximum inclusion rate per ingredient: x_i <= limit_i (as fraction)
+  inclusion_limits <- if ("max_inclusion" %in% names(ingredients)) {
+    ingredients$max_inclusion / 100
+  } else {
+    rep(NA_real_, n_ing)
+  }
+  names(inclusion_limits) <- ingredients[[label_col]]
+  limited <- which(!is.na(inclusion_limits))
+  limit_con <- matrix(0, nrow = length(limited), ncol = n_ing)
+  limit_con[cbind(seq_along(limited), limited)] <- 1
+  limit_dir <- rep("<=", length(limited))
+  limit_rhs <- inclusion_limits[limited]
+  limit_names <- sprintf("Max inclusion [%s]", names(inclusion_limits)[limited])
+  if (length(limited) > 0) {
+    log_info(log_context, "Maximum inclusion limits: ",
+             paste0(names(limit_rhs), " <= ", fmt_num_each(100 * limit_rhs), " %",
+                    collapse = "; "))
+  }
 
   if (least_cost) {
     # Variables: x_1..x_n
     open <- !ranged  # nutrients whose target is a plain minimum
     var_names <- ingredients[[label_col]]
     f.obj <- ingredients$cost
-    f.con <- rbind(A[open, , drop = FALSE], range_con, mass_balance)
-    f.dir <- c(rep(">=", sum(open)), range_dir, "=")
-    f.rhs <- c(targets[open], range_rhs, 1)
-    con_names <- c(paste(nutrient_labels[open], "(min)"), range_names,
-                   "Sum of inclusion rates")
+    f.con <- rbind(A[open, , drop = FALSE], range_con, limit_con, mass_balance)
+    f.dir <- c(rep(">=", sum(open)), range_dir, limit_dir, "=")
+    f.rhs <- c(targets[open], range_rhs, limit_rhs, 1)
+    con_names <- c(sprintf("%s (min)", nutrient_labels[open]), range_names,
+                   limit_names, "Sum of inclusion rates")
   } else {
     # Variables: x_1..x_n, then under_j and over_j for every goal nutrient
     goal <- which(!ranged)
     n_goal <- length(goal)
     var_names <- c(ingredients[[label_col]],
-                   paste0("under[", nutrient_labels[goal], "]"),
-                   paste0("over[", nutrient_labels[goal], "]"))
+                   sprintf("under[%s]", nutrient_labels[goal]),
+                   sprintf("over[%s]", nutrient_labels[goal]))
     f.obj <- c(rep(0, n_ing), rep(1, 2 * n_goal))
     pad <- function(m) cbind(m, matrix(0, nrow(m), 2 * n_goal))
     f.con <- rbind(
       cbind(A[goal, , drop = FALSE], diag(n_goal), -diag(n_goal)),
       pad(range_con),
+      pad(limit_con),
       pad(matrix(mass_balance, nrow = 1))
     )
-    f.dir <- c(rep("=", n_goal), range_dir, "=")
-    f.rhs <- c(targets[goal], range_rhs, 1)
-    con_names <- c(paste(nutrient_labels[goal], "(target)"), range_names,
-                   "Sum of inclusion rates")
+    f.dir <- c(rep("=", n_goal), range_dir, limit_dir, "=")
+    f.rhs <- c(targets[goal], range_rhs, limit_rhs, 1)
+    con_names <- c(sprintf("%s (target)", nutrient_labels[goal]), range_names,
+                   limit_names, "Sum of inclusion rates")
   }
 
   log_object(log_context, "LP model (objective: minimise):", {
@@ -271,7 +316,8 @@ formulate_feed <- function(ingredients, targets, maxima = NULL,
     diagnosis <- paste("The solver reported an error:", result$error)
   } else {
     diagnosis <- diagnose_infeasibility(
-      A, targets, maxima, least_cost, nutrient_labels, log_context
+      A, targets, maxima, least_cost, nutrient_labels, log_context,
+      inclusion_limits = inclusion_limits
     )
     log_warn(log_context, "No feasible solution. ", paste(diagnosis, collapse = " "))
   }
@@ -280,6 +326,7 @@ formulate_feed <- function(ingredients, targets, maxima = NULL,
     feasible   = feasible,
     mode       = mode,
     inclusion  = inclusion,
+    inclusion_limits = inclusion_limits,
     targets    = targets,
     maxima     = maxima,
     achieved   = achieved,
@@ -305,25 +352,31 @@ lp_status_text <- function(status) {
 
 #' Explain why no mix satisfies the hard constraints
 #'
-#' Hard constraints are the min-max ranges and, in least-cost mode, also the
-#' plain minimum targets. The mix composition is a weighted average of the
-#' ingredients, so
-#'   1. a single constraint is impossible if the required range does not
-#'      overlap the range spanned by the selected ingredients
-#'      [min_i a_ij, max_i a_ij];
-#'   2. otherwise, every pair of constraints is tested with a small LP to find
-#'      combinations that cannot be met at the same time.
+#' Hard constraints are the min-max ranges, the maximum inclusion rates and,
+#' in least-cost mode, also the plain minimum targets. The checks are
+#'   0. the inclusion limits must add up to at least 100 %;
+#'   1. a single nutrient requirement is impossible if the required range does
+#'      not overlap the range of contents any mix can reach (found by
+#'      minimising and maximising the nutrient content with small LPs that
+#'      respect the inclusion limits);
+#'   2. otherwise, every pair of requirements is tested with a small LP to
+#'      find combinations that cannot be met at the same time.
 #'
 #' @param A nutrient matrix (nutrients x ingredients).
 #' @param targets,maxima,least_cost as in formulate_feed().
 #' @param labels display names of the nutrients.
 #' @param log_context tag used in log messages.
+#' @param inclusion_limits maximum inclusion fraction per ingredient
+#'   (NA = no limit).
 #' @return character vector with one explanation per line.
 diagnose_infeasibility <- function(A, targets, maxima, least_cost, labels,
-                                   log_context = "lp") {
+                                   log_context = "lp",
+                                   inclusion_limits = rep(NA_real_, ncol(A))) {
   hard <- !is.na(maxima) | least_cost  # nutrients with hard constraints
   lower <- ifelse(hard, targets, -Inf)
   upper <- ifelse(is.na(maxima), Inf, maxima)
+  limits <- ifelse(is.na(inclusion_limits), 1, inclusion_limits)
+  has_limits <- any(!is.na(inclusion_limits))
   describe <- function(j) {
     if (is.finite(upper[j])) {
       sprintf("%s between %s and %s", labels[j], fmt_num(lower[j]), fmt_num(upper[j]))
@@ -332,32 +385,63 @@ diagnose_infeasibility <- function(A, targets, maxima, least_cost, labels,
     }
   }
 
-  # 1. Constraints that no mix of the selected ingredients can reach
-  lowest <- apply(A, 1, min)
-  highest <- apply(A, 1, max)
-  impossible <- which(hard & (highest < lower - 1e-9 | lowest > upper + 1e-9))
-  if (length(impossible) > 0) {
+  # Solves an LP over the inclusion rates with the mass balance and the
+  # inclusion limits, plus optional extra constraints
+  solve_mix <- function(direction, objective, con = NULL, dir = NULL, rhs = NULL) {
+    n <- ncol(A)
+    lp(direction, objective,
+       rbind(con, rep(1, n), diag(n)),
+       c(dir, "=", rep("<=", n)),
+       c(rhs, 1, limits))
+  }
+
+  # 0. The inclusion limits must leave room for a complete (100 %) mix
+  if (sum(limits) < 1 - 1e-9) {
     return(c(
-      "The following requirement(s) cannot be met by any mix of the selected ingredients:",
-      sprintf("  - %s: the selected ingredients contain between %s and %s.",
-              map_chr(impossible, describe),
-              map_chr(lowest[impossible], fmt_num),
-              map_chr(highest[impossible], fmt_num)),
-      "Adjust the minimum/maximum or select ingredients richer/poorer in these nutrients."
+      sprintf(paste("The maximum inclusion rates of the selected ingredients add up to",
+                    "only %s %%, so they cannot make up a complete mix."),
+              fmt_num(100 * sum(limits))),
+      "Raise the maximum inclusion rates or select additional ingredients."
     ))
   }
 
-  # 2. Pairs of constraints that conflict with each other
+  # 1. Requirements that no mix of the selected ingredients can reach: the
+  #    reachable range of each nutrient is found by minimising and maximising
+  #    its content (respecting the inclusion limits)
   hard_idx <- which(hard)
+  lowest <- set_names(rep(NA_real_, length(labels)), labels)
+  highest <- lowest
+  for (j in hard_idx) {
+    lowest[j] <- solve_mix("min", A[j, ])$objval
+    highest[j] <- solve_mix("max", A[j, ])$objval
+    log_debug(log_context, "Reachable range of ", labels[j], ": ",
+              fmt_num(lowest[j]), " to ", fmt_num(highest[j]))
+  }
+  impossible <- hard_idx[highest[hard_idx] < lower[hard_idx] - 1e-9 |
+                           lowest[hard_idx] > upper[hard_idx] + 1e-9]
+  if (length(impossible) > 0) {
+    return(c(
+      "The following requirement(s) cannot be met by any mix of the selected ingredients:",
+      sprintf("  - %s: the selected ingredients can provide between %s and %s%s.",
+              map_chr(impossible, describe),
+              fmt_num_each(lowest[impossible]),
+              fmt_num_each(highest[impossible]),
+              if (has_limits) " (within their maximum inclusion rates)" else ""),
+      paste("Adjust the minimum/maximum, relax the inclusion limits or select",
+            "ingredients richer/poorer in these nutrients.")
+    ))
+  }
+
+  # 2. Pairs of requirements that conflict with each other
   conflicts <- character()
   if (length(hard_idx) >= 2) {
     for (pair in combn(hard_idx, 2, simplify = FALSE)) {
-      con <- rbind(A[pair, , drop = FALSE], A[pair, , drop = FALSE], rep(1, ncol(A)))
-      dir <- c(">=", ">=", "<=", "<=", "=")
-      rhs <- c(lower[pair], upper[pair], 1)
+      con <- rbind(A[pair, , drop = FALSE], A[pair, , drop = FALSE])
+      dir <- c(">=", ">=", "<=", "<=")
+      rhs <- c(lower[pair], upper[pair])
       keep <- is.finite(rhs)
-      status <- lp("min", rep(0, ncol(A)), con[keep, , drop = FALSE],
-                   dir[keep], rhs[keep])$status
+      status <- solve_mix("min", rep(0, ncol(A)), con[keep, , drop = FALSE],
+                          dir[keep], rhs[keep])$status
       log_debug(log_context, "Feasibility check ", labels[pair[1]], " + ",
                 labels[pair[2]], ": ", lp_status_text(status))
       if (status != 0) {
@@ -369,13 +453,13 @@ diagnose_infeasibility <- function(A, targets, maxima, least_cost, labels,
     return(c(
       "Each requirement can be met on its own, but these combinations cannot be met at the same time:",
       conflicts,
-      "Widen the ranges or select additional ingredients."
+      "Widen the ranges, relax the inclusion limits or select additional ingredients."
     ))
   }
 
   c(
     "Each requirement can be met on its own, but not all of them at the same time.",
-    "Widen the minimum-maximum ranges or select additional ingredients."
+    "Widen the minimum-maximum ranges, relax the inclusion limits or select additional ingredients."
   )
 }
 
@@ -395,13 +479,21 @@ format_solution <- function(result) {
     "Optimal feed mix (minimising deviation from nutrient targets)"
   }
 
-  # Inclusion rates, largest first; ingredients with ~0 inclusion are omitted
-  inclusion <- sort(result$inclusion, decreasing = TRUE)
-  inclusion <- inclusion[inclusion > 1e-6]
+  # Inclusion rates, largest first; ingredients with ~0 inclusion are omitted.
+  # Ingredients with a maximum inclusion rate show it, flagged when reached.
+  used <- order(result$inclusion, decreasing = TRUE)
+  used <- used[result$inclusion[used] > 1e-6]
+  inclusion <- result$inclusion[used]
+  limit <- result$inclusion_limits[used]
+  limit_note <- ifelse(
+    is.na(limit), "",
+    sprintf("   [max %s %%%s]", fmt_num_each(100 * limit),
+            ifelse(inclusion >= limit - 1e-6, ", limit reached", ""))
+  )
   label_width <- max(nchar(names(inclusion)), 10)
   mix_lines <- sprintf(
-    "  %-*s %6.2f %%   (%6.2f kg per 100 kg)",
-    label_width, names(inclusion), 100 * inclusion, 100 * inclusion
+    "  %-*s %6.2f %%   (%6.2f kg per 100 kg)%s",
+    label_width, names(inclusion), 100 * inclusion, 100 * inclusion, limit_note
   )
 
   # Difference to the target, or "in range" for nutrients with a maximum
@@ -449,6 +541,8 @@ format_solution <- function(result) {
 #'   ingredient, protein, lipid, carbohydrate, ash, energy
 #' Optional columns:
 #'   cost      - price per kg; pre-fills the cost column of the selection
+#'   max_inclusion - maximum inclusion rate in % of the mix; pre-fills the
+#'               corresponding column of the selection
 #'   category1 - ingredient category (also accepted as "category")
 #' Column names are case-insensitive; any other columns are ignored.
 #' Both comma-separated files (decimal point) and semicolon-separated files
@@ -457,7 +551,7 @@ format_solution <- function(result) {
 #' @param path path to the CSV file.
 #' @param log_context tag used in log messages.
 #' @return data.frame with columns ingredient, NUTRIENTS and, if present,
-#'   category1 and cost.
+#'   category1, cost and max_inclusion.
 #' @throws an error with a user-readable message if the file is invalid.
 read_ingredient_csv <- function(path, log_context = "import") {
   # Guess the delimiter from the header line; numbers are parsed below, so
@@ -506,19 +600,29 @@ read_ingredient_csv <- function(path, log_context = "import") {
     data[[col]] <- values
   }
 
-  if ("cost" %in% names(data)) {
-    raw <- data$cost
-    data$cost <- parse_decimal(raw)
-    bad <- which((is.na(data$cost) & !is.na(raw) & str_trim(raw) != "") |
-                   (!is.na(data$cost) & data$cost < 0))
+  # Optional columns: empty cells allowed, otherwise a number in [min, max]
+  parse_optional <- function(col, min, max, what) {
+    raw <- data[[col]]
+    values <- parse_decimal(raw)
+    bad <- which((is.na(values) & !is.na(raw) & str_trim(raw) != "") |
+                   (!is.na(values) & (values < min | values > max)))
     if (length(bad) > 0) {
-      stop("Column 'cost' must be empty or a non-negative number. ",
+      stop("Column '", col, "' must be empty or ", what, ". ",
            "Problem in row(s): ", paste(head(bad, 10), collapse = ", "), ".",
            call. = FALSE)
     }
+    values
+  }
+  if ("cost" %in% names(data)) {
+    data$cost <- parse_optional("cost", 0, Inf, "a non-negative number")
+  }
+  if ("max_inclusion" %in% names(data)) {
+    data$max_inclusion <- parse_optional("max_inclusion", 0, 100,
+                                         "a number between 0 and 100 (%)")
   }
 
-  keep <- intersect(c("category1", "ingredient", NUTRIENTS, "cost"), names(data))
+  keep <- intersect(c("category1", "ingredient", NUTRIENTS, "cost", "max_inclusion"),
+                    names(data))
   ignored <- setdiff(names(data), keep)
   if (length(ignored) > 0) {
     log_debug(log_context, "Ignored CSV column(s): ", paste(ignored, collapse = ", "))

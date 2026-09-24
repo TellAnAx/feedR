@@ -6,7 +6,8 @@
 #
 #   sidebar: [tab-specific controls] + nutrient targets + action buttons
 #   main:    [tab-specific content] + available ingredients table
-#            + selected ingredients table (only the cost column is editable)
+#            + selected ingredients table (only cost and max. inclusion are
+#              editable)
 #            + solution
 #
 # The tabs differ only in where the "available ingredients" come from. Each
@@ -56,9 +57,10 @@ formulation_ui <- function(id, sidebar_top = NULL, main_top = NULL) {
 
         h3("Selected Ingredients"),
         helpText(
-          "Nutrient values are fixed. Double-click a cell in the cost column,",
-          "enter the price per kg and click outside the cell (or press Tab)",
-          "to save it. Costs are required for least-cost formulation."
+          "Nutrient values are fixed. Double-click a cell in the cost or",
+          "max. inclusion column, enter the value and click outside the cell",
+          "(or press Tab) to save it. Costs are required for least-cost",
+          "formulation. The maximum inclusion rate (% of the mix) is optional."
         ),
         DTOutput(ns("selected_feed_table")),
 
@@ -145,7 +147,7 @@ setup_formulation <- function(input, output, session, available_data,
     validate(need(!is.null(data) && nrow(data) > 0, empty_message))
     log_debug(log_ctx, "Rendering available ingredients table (", nrow(data), " rows)")
 
-    display_cols <- intersect(c(label_col, NUTRIENTS, "cost"), names(data))
+    display_cols <- intersect(c(label_col, NUTRIENTS, "cost", "max_inclusion"), names(data))
     datatable(
       data[, display_cols, drop = FALSE],
       rownames = FALSE,
@@ -173,7 +175,7 @@ setup_formulation <- function(input, output, session, available_data,
   observeEvent(input$clear_selection, clear())
 
 
-  # Selected ingredients (only the cost column is editable) ----
+  # Selected ingredients (only cost and max. inclusion are editable) ----
   output$selected_feed_table <- renderDT({
     selection_version()
     selection <- isolate(selected_ingredients())
@@ -182,9 +184,10 @@ setup_formulation <- function(input, output, session, available_data,
                        rownames = FALSE, options = list(dom = "t")))
     }
 
-    # DT column indices are 0-based (no row names shown); lock all but cost
-    cost_index <- which(names(selection) == "cost") - 1
-    locked_columns <- setdiff(seq_along(selection) - 1, cost_index)
+    # DT column indices are 0-based (no row names shown); lock all columns
+    # except the editable ones
+    editable_index <- which(names(selection) %in% EDITABLE_SELECTION_COLUMNS) - 1
+    locked_columns <- setdiff(seq_along(selection) - 1, editable_index)
 
     datatable(
       selection,
@@ -203,8 +206,8 @@ setup_formulation <- function(input, output, session, available_data,
     column <- names(selection)[edit$col + 1]
     ingredient <- selection[[label_col]][edit$row]
 
-    # Defensive check: only the cost column may be changed
-    if (!identical(column, "cost")) {
+    # Defensive check: only the editable columns may be changed
+    if (!column %in% EDITABLE_SELECTION_COLUMNS) {
       log_warn(log_ctx, "Rejected edit of locked column '", column, "' for ", ingredient)
       selection_version(selection_version() + 1)  # restore original values
       return()
@@ -212,16 +215,18 @@ setup_formulation <- function(input, output, session, available_data,
 
     raw <- str_trim(as.character(edit$value))
     value <- parse_decimal(raw)
+    problem <- validate_optional_value(raw, value, column)
 
-    if (raw != "" && (is.na(value) || value < 0)) {
-      log_warn(log_ctx, "Rejected invalid cost '", raw, "' for ", ingredient)
-      showNotification("Cost must be a non-negative number.", type = "error")
+    if (!is.null(problem)) {
+      log_warn(log_ctx, "Rejected ", column, " '", raw, "' for ", ingredient)
+      showNotification(problem, type = "error")
       selection_version(selection_version() + 1)  # restore previous value
       return()
     }
 
-    log_info(log_ctx, "Cost of ", ingredient, " set to ", fmt_num(value))
-    selection$cost[edit$row] <- value  # empty input -> NA (cost not entered)
+    log_info(log_ctx, column_titles(column, label_col, label_title), " of ",
+             ingredient, " set to ", fmt_num(value))
+    selection[[column]][edit$row] <- value  # empty input -> NA (not entered)
     selected_ingredients(selection)
   })
 
@@ -242,12 +247,17 @@ setup_formulation <- function(input, output, session, available_data,
              if (isTRUE(input$least_cost)) "least-cost" else "target matching")
     log_debug(log_ctx, "Targets/minima: ", fmt_num(targets), " | maxima: ", fmt_num(maxima))
 
-    bound_problems <- check_bounds(targets, maxima, NUTRIENT_LABELS[NUTRIENTS])
+    bound_problems <- c(
+      check_bounds(targets, maxima, NUTRIENT_LABELS[NUTRIENTS]),
+      if (!is.null(selection)) {
+        check_inclusion_limits(selection$max_inclusion, selection[[label_col]])
+      }
+    )
 
     if (is.null(selection) || nrow(selection) == 0) {
       solution("Please select at least one ingredient.")
     } else if (length(bound_problems) > 0) {
-      solution(c("Please check the nutrient targets:", paste0("  - ", bound_problems)))
+      solution(c("Please check the targets and inclusion limits:", paste0("  - ", bound_problems)))
     } else if (input$least_cost && any(is.na(selection$cost))) {
       missing <- selection[[label_col]][is.na(selection$cost)]
       solution(c(
@@ -276,13 +286,38 @@ setup_formulation <- function(input, output, session, available_data,
 }
 
 
+#' Columns of the selected-ingredients table the user may edit.
+EDITABLE_SELECTION_COLUMNS <- c("cost", "max_inclusion")
+
+
+#' Validate a user-entered cost or maximum inclusion rate
+#'
+#' Both are optional, so an empty entry is fine (it means "not set").
+#'
+#' @param raw the text the user entered (trimmed).
+#' @param value `raw` parsed with parse_decimal().
+#' @param column "cost" or "max_inclusion".
+#' @return NULL if valid, otherwise an error message for the user.
+validate_optional_value <- function(raw, value, column) {
+  if (raw == "") return(NULL)
+  if (column == "cost" && (is.na(value) || value < 0)) {
+    return("Cost must be empty or a non-negative number.")
+  }
+  if (column == "max_inclusion" && (is.na(value) || value < 0 || value > 100)) {
+    return("The maximum inclusion rate must be empty or a number between 0 and 100 (%).")
+  }
+  NULL
+}
+
+
 #' Column headers for the ingredient tables
 #'
 #' @param cols column names of the table.
 #' @param label_col name of the label column; its header is `label_title`.
 #' @return character vector of display names.
 column_titles <- function(cols, label_col, label_title) {
-  titles <- c(NUTRIENT_LABELS, cost = "Cost (per kg)", category1 = "Category")
+  titles <- c(NUTRIENT_LABELS, cost = "Cost (per kg)",
+              max_inclusion = "Max. inclusion (%)", category1 = "Category")
   titles[label_col] <- label_title
   unname(ifelse(cols %in% names(titles), titles[cols], cols))
 }

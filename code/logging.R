@@ -68,3 +68,6 @@ log_object <- function(context, title, object) {
 
 #' Format a number vector compactly for log messages, e.g. "40, 10.5, NA".
 fmt_num <- function(x) paste(format(x, digits = 4, trim = TRUE), collapse = ", ")
+
+#' Format each number of a vector separately, e.g. c("40", "10.5", "NA").
+fmt_num_each <- function(x) vapply(x, fmt_num, character(1), USE.NAMES = FALSE)
