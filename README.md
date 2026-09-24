@@ -136,6 +136,98 @@ scenario and how `formulate_feed()` turns its arguments into a call of
 `lpSolve::lp()`. The examples below are run when this README is knitted,
 so their output always reflects the current code.
 
+#### The big picture
+
+The scheme below shows how the functions work together, from the
+ingredient data to the outputs. Boxes are functions or data, arrow
+labels say what is passed along. Read it top to bottom:
+
+1.  **Ingredient data** comes from the database (loaded once by
+    `data_prep.R`) or from an uploaded CSV file.
+2.  Each **tab module** provides its ingredient table. Simplified, Full
+    and Import all hand it to the shared `setup_formulation()` (3a); the
+    Manual tab keeps its own composition parts and ingredients (3b).
+3.  Clicking **Formulate** runs the checks, then `formulate_feed()`
+    builds the linear program and calls `lpSolve::lp()`; if there is no
+    solution, `diagnose_infeasibility()` explains why.
+4.  The **result** is shown as text in the *Solution* box and can be
+    downloaded as a PDF report.
+
+Every step writes to the console through the helpers in `code/logging.R`
+(not drawn, to keep the scheme readable).
+
+``` mermaid
+flowchart TB
+  subgraph SRC["1 · Ingredient data"]
+    DB[("data/FICD 2025-10-27.csv")]
+    FD["feed_data<br/>one row per ingredient"]
+    FDS["feed_data_summarised<br/>mean per category"]
+    CSV[/"uploaded CSV file"/]
+    RIC["read_ingredient_csv()<br/>uses parse_decimal()"]
+    DB -- "data_prep.R" --> FD
+    FD -- "category means" --> FDS
+    CSV --> RIC
+  end
+
+  subgraph TABS["2 · Tab modules"]
+    SUM["server_summary()<br/>Simplified"]
+    FULL["server_full()<br/>Full + category filter"]
+    IMP["server_import()<br/>Import"]
+    MAN["server_manual()<br/>Manual"]
+  end
+  FDS --> SUM
+  FD --> FULL
+  RIC --> IMP
+
+  subgraph SF["3a · setup_formulation(): shared by Simplified, Full, Import"]
+    AVT["Available Ingredients table"]
+    ATS["add_to_selection()"]
+    VAL["parse_decimal()<br/>validate_optional_value()"]
+    SEL["selection<br/>name · nutrients · cost · min/max inclusion"]
+    TGT["sidebar<br/>targets + optional maxima"]
+    AVT -- "row clicked" --> ATS --> SEL
+    VAL -- "cost / limit edited" --> SEL
+  end
+  SUM -- "available_data" --> AVT
+  FULL -- "available_data" --> AVT
+  IMP -- "available_data" --> AVT
+
+  subgraph MS["3b · server_manual(): own state"]
+    PARTS["composition parts<br/>key · name · target · maximum"]
+    MING["ingredients<br/>typed row by row"]
+  end
+  MAN --> PARTS
+  MAN --> MING
+
+  subgraph FORM["4 · Formulate button"]
+    CHK["check_bounds()<br/>check_inclusion_limits()"]
+    FF["formulate_feed()"]
+    LP[["lpSolve::lp()"]]
+    DIAG["diagnose_infeasibility()<br/>extra small lp() calls"]
+    RES["result<br/>inclusion · achieved · cost · diagnosis"]
+  end
+  SEL --> CHK
+  TGT --> CHK
+  PARTS --> CHK
+  MING --> CHK
+  CHK -- "inputs valid" --> FF
+  FF -- "f.obj, f.con, f.dir, f.rhs" --> LP
+  LP -- "status 0: solution" --> RES
+  LP -- "status 2: infeasible" --> DIAG --> RES
+
+  subgraph OUT["5 · Output"]
+    FS["format_solution()<br/>inclusion_limit_notes()"]
+    BOX["Solution box"]
+    NR["new_formulation_report()<br/>snapshot of inputs + result"]
+    WR["write_formulation_report()"]
+    PDF[/"PDF report"/]
+  end
+  CHK -- "problems found: message" --> BOX
+  RES --> FS --> BOX
+  RES --> NR
+  NR -- "Download PDF report" --> WR --> PDF
+```
+
 #### Helper functions at a glance
 
 All pure (non-Shiny) helpers live in `code/helper_functions.R`, the
@@ -238,6 +330,59 @@ variable), the constraint directions (`const.dir`) and the right-hand
 sides (`const.rhs`). lpSolve implicitly requires every variable to be ≥
 0, which is exactly the non-negativity of inclusion rates and
 deviations.
+
+The scheme shows which argument of `formulate_feed()` ends up in which
+part of the linear program, and how the result is read back (dotted
+arrow: a nutrient without a maximum gets a target row instead of range
+rows). The tables below give the details.
+
+``` mermaid
+flowchart LR
+  subgraph IN["Arguments of formulate_feed()"]
+    ING["ingredients[, nutrients]"]
+    TG["targets"]
+    MX["maxima"]
+    LIM["ingredients$min_inclusion<br/>ingredients$max_inclusion"]
+    CO["ingredients$cost"]
+    LC["least_cost"]
+  end
+
+  subgraph BUILD["Building the linear program"]
+    A["A = t(ingredients[, nutrients])<br/>nutrients × ingredients"]
+    R1["nutrient target rows<br/>A[j, ] &gt;= target  (least cost)<br/>A[j, ] + under - over = target  (target matching)"]
+    R2["range rows<br/>A[j, ] &gt;= target<br/>A[j, ] &lt;= maximum"]
+    R3["inclusion limit rows<br/>x[i] &gt;= min / 100<br/>x[i] &lt;= max / 100"]
+    R4["mass balance<br/>sum(x) = 1"]
+    OBJ["objective<br/>costs (least cost) or<br/>1 per under/over deviation"]
+  end
+  ING --> A
+  A --> R1
+  A --> R2
+  TG --> R1
+  TG --> R2
+  MX -- "maximum set" --> R2
+  MX -. "no maximum" .-> R1
+  LIM --> R3
+  CO --> OBJ
+  LC -- "chooses model" --> OBJ
+
+  R1 --> CON["f.con · f.dir · f.rhs<br/>rows stacked with rbind()"]
+  R2 --> CON
+  R3 --> CON
+  R4 --> CON
+  OBJ --> FOBJ["f.obj"]
+  CON --> LP[["lp(&quot;min&quot;, f.obj, f.con, f.dir, f.rhs)"]]
+  FOBJ --> LP
+
+  subgraph RES["Result of formulate_feed()"]
+    INC["inclusion = solution[1:n]"]
+    ACH["achieved = A %*% inclusion"]
+    ST["feasible = status == 0<br/>objective = objval"]
+  end
+  LP --> INC
+  LP --> ST
+  INC --> ACH
+```
 
 **Variables (columns of `f.con`).** The first *n* variables are always
 the inclusion rates *x<sub>i</sub>* of the *n* ingredients, as fractions
