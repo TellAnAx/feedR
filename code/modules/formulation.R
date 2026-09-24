@@ -6,8 +6,8 @@
 #
 #   sidebar: [tab-specific controls] + nutrient targets + action buttons
 #   main:    [tab-specific content] + available ingredients table
-#            + selected ingredients table (only cost and max. inclusion are
-#              editable)
+#            + selected ingredients table (only cost and min./max. inclusion
+#              are editable)
 #            + solution
 #
 # The tabs differ only in where the "available ingredients" come from. Each
@@ -57,10 +57,10 @@ formulation_ui <- function(id, sidebar_top = NULL, main_top = NULL) {
 
         h3("Selected Ingredients"),
         helpText(
-          "Nutrient values are fixed. Double-click a cell in the cost or",
-          "max. inclusion column, enter the value and click outside the cell",
-          "(or press Tab) to save it. Costs are required for least-cost",
-          "formulation. The maximum inclusion rate (% of the mix) is optional."
+          "Nutrient values are fixed. Double-click a cell in the cost, min.",
+          "inclusion or max. inclusion column, enter the value and click",
+          "outside the cell (or press Tab) to save it. Costs are required for",
+          "least-cost formulation. Inclusion limits (% of the mix) are optional."
         ),
         DTOutput(ns("selected_feed_table")),
 
@@ -147,7 +147,8 @@ setup_formulation <- function(input, output, session, available_data,
     validate(need(!is.null(data) && nrow(data) > 0, empty_message))
     log_debug(log_ctx, "Rendering available ingredients table (", nrow(data), " rows)")
 
-    display_cols <- intersect(c(label_col, NUTRIENTS, "cost", "max_inclusion"), names(data))
+    display_cols <- intersect(c(label_col, NUTRIENTS, "cost", "min_inclusion", "max_inclusion"),
+                              names(data))
     datatable(
       data[, display_cols, drop = FALSE],
       rownames = FALSE,
@@ -175,7 +176,7 @@ setup_formulation <- function(input, output, session, available_data,
   observeEvent(input$clear_selection, clear())
 
 
-  # Selected ingredients (only cost and max. inclusion are editable) ----
+  # Selected ingredients (only cost and inclusion limits are editable) ----
   output$selected_feed_table <- renderDT({
     selection_version()
     selection <- isolate(selected_ingredients())
@@ -250,7 +251,8 @@ setup_formulation <- function(input, output, session, available_data,
     bound_problems <- c(
       check_bounds(targets, maxima, NUTRIENT_LABELS[NUTRIENTS]),
       if (!is.null(selection)) {
-        check_inclusion_limits(selection$max_inclusion, selection[[label_col]])
+        check_inclusion_limits(selection$min_inclusion, selection$max_inclusion,
+                               selection[[label_col]])
       }
     )
 
@@ -287,24 +289,26 @@ setup_formulation <- function(input, output, session, available_data,
 
 
 #' Columns of the selected-ingredients table the user may edit.
-EDITABLE_SELECTION_COLUMNS <- c("cost", "max_inclusion")
+EDITABLE_SELECTION_COLUMNS <- c("cost", "min_inclusion", "max_inclusion")
 
 
-#' Validate a user-entered cost or maximum inclusion rate
+#' Validate a user-entered cost or inclusion limit
 #'
 #' Both are optional, so an empty entry is fine (it means "not set").
 #'
 #' @param raw the text the user entered (trimmed).
 #' @param value `raw` parsed with parse_decimal().
-#' @param column "cost" or "max_inclusion".
+#' @param column "cost", "min_inclusion" or "max_inclusion".
 #' @return NULL if valid, otherwise an error message for the user.
 validate_optional_value <- function(raw, value, column) {
   if (raw == "") return(NULL)
   if (column == "cost" && (is.na(value) || value < 0)) {
     return("Cost must be empty or a non-negative number.")
   }
-  if (column == "max_inclusion" && (is.na(value) || value < 0 || value > 100)) {
-    return("The maximum inclusion rate must be empty or a number between 0 and 100 (%).")
+  if (column %in% c("min_inclusion", "max_inclusion") &&
+      (is.na(value) || value < 0 || value > 100)) {
+    return(sprintf("The %s inclusion rate must be empty or a number between 0 and 100 (%%).",
+                   if (column == "min_inclusion") "minimum" else "maximum"))
   }
   NULL
 }
@@ -317,7 +321,8 @@ validate_optional_value <- function(raw, value, column) {
 #' @return character vector of display names.
 column_titles <- function(cols, label_col, label_title) {
   titles <- c(NUTRIENT_LABELS, cost = "Cost (per kg)",
-              max_inclusion = "Max. inclusion (%)", category1 = "Category")
+              min_inclusion = "Min. inclusion (%)", max_inclusion = "Max. inclusion (%)",
+              category1 = "Category")
   titles[label_col] <- label_title
   unname(ifelse(cols %in% names(titles), titles[cols], cols))
 }

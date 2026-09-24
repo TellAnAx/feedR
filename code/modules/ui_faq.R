@@ -127,29 +127,36 @@ ui_faq <- function(id) {
         "for this nutrient."
       ),
 
-      h4("Optional maximum inclusion rate per ingredient"),
+      h4("Optional inclusion limits per ingredient"),
       p(
-        "Each selected ingredient can also be given a maximum inclusion rate",
-        "\\(l_i\\) in % of the mix (column", tags$em("Max. inclusion (%)"),
-        "in the ingredient tables, or", tags$code("max_inclusion"), "in an",
-        "imported CSV). It adds a hard constraint to both modes:"
+        "Each selected ingredient can also be given a minimum inclusion rate",
+        "\\(k_i\\) and/or a maximum inclusion rate \\(l_i\\), in % of the",
+        "mix (columns", tags$em("Min. inclusion (%)"), "and",
+        tags$em("Max. inclusion (%)"), "in the ingredient tables, or",
+        tags$code("min_inclusion"), "/", tags$code("max_inclusion"), "in an",
+        "imported CSV). They add hard constraints to both modes:"
       ),
-      p("$$x_i \\le \\frac{l_i}{100}$$"),
+      p("$$\\frac{k_i}{100} \\le x_i \\le \\frac{l_i}{100}$$"),
       p(
-        "Use it, for example, to limit an expensive or anti-nutritional",
-        "ingredient. The solution marks ingredients whose limit was reached."
+        "Use a maximum, for example, to limit an expensive or anti-nutritional",
+        "ingredient, and a minimum to force a premix or a binder into the",
+        "feed. The solution shows each ingredient's limits and marks those",
+        "that were reached. A minimum larger than the maximum, or minimums",
+        "that add up to more than 100 %, are reported before the calculation",
+        "starts."
       ),
 
       h4("What if no solution is found?"),
       p(
         "If the selected ingredients cannot satisfy all hard requirements",
-        "(ranges, maximum inclusion rates, and in least-cost mode all",
+        "(ranges, inclusion limits, and in least-cost mode all",
         "minima) at the same time, the",
         "problem is", tags$em("infeasible."), "FeedR then explains why:"
       ),
       tags$ul(
         tags$li("If the maximum inclusion rates add up to less than 100 %, no",
-                "complete mix is possible."),
+                "complete mix is possible (likewise if the minimums add up to",
+                "more than 100 %)."),
         tags$li("A requirement is impossible on its own if the required range",
                 "does not overlap the range of contents any mix can reach. The",
                 "mix is an average, so it can never contain more of a nutrient",
@@ -179,9 +186,7 @@ ui_faq <- function(id) {
       h4("Current limitations"),
       tags$ul(
         tags$li("Only the five nutrients listed above are considered;",
-                "amino acids, minerals, digestibility etc. are not."),
-        tags$li("Only maximum inclusion rates per ingredient are supported;",
-                "there are no minimum inclusion rates.")
+                "amino acids, minerals, digestibility etc. are not.")
       ),
 
       h3("How do I enter ingredient costs?"),
@@ -190,7 +195,7 @@ ui_faq <- function(id) {
         "double-click a cell in the", tags$em("Cost (per kg)"), "column of",
         "the Selected Ingredients table, type the price and click outside the",
         "cell (or press Tab) to save it.",
-        "Only the cost and maximum inclusion columns can be edited; nutrient",
+        "Only the cost and inclusion limit columns can be edited; nutrient",
         "values are fixed.",
         "Any currency can be used, as long as it is the same for all",
         "ingredients."
@@ -204,8 +209,8 @@ ui_faq <- function(id) {
                 "lipid, carbohydrate, ash and energy in one go."),
         tags$li("Add the available ingredients one by one with their content",
                 "of every composition part (in the same units as the target)",
-                "and, optionally, their cost per kg and maximum inclusion",
-                "rate."),
+                "and, optionally, their cost per kg and minimum / maximum",
+                "inclusion rate."),
         tags$li("Click", tags$em("Formulate."), "All entered ingredients are",
                 "used; the model is the same as described above, only with",
                 "your composition parts instead of the five standard nutrients.")
@@ -234,6 +239,9 @@ ui_faq <- function(id) {
           tags$tr(tags$td("ash"), tags$td("Ash (%)"), tags$td("yes")),
           tags$tr(tags$td("energy"), tags$td("Gross energy (MJ/kg)"), tags$td("yes")),
           tags$tr(tags$td("cost"), tags$td("Price per kg; may be left empty"), tags$td("no")),
+          tags$tr(tags$td("min_inclusion"),
+                  tags$td("Minimum inclusion rate in % of the mix (0-100); may be left empty"),
+                  tags$td("no")),
           tags$tr(tags$td("max_inclusion"),
                   tags$td("Maximum inclusion rate in % of the mix (0-100); may be left empty"),
                   tags$td("no")),

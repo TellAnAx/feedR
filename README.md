@@ -17,7 +17,7 @@ problem with [lpSolve](https://cran.r-project.org/package=lpSolve), either
 Every target can optionally be given a maximum; the target is then treated
 as a minimum and the mix must lie within that range. If the requirements
 cannot be met, the app explains which of them conflict. Each ingredient can
-also be given a maximum inclusion rate (% of the mix). The FAQ tab of the
+also be given a minimum and/or maximum inclusion rate (% of the mix). The FAQ tab of the
 app explains the mathematical model in detail.
 
 ### Tabs
@@ -30,15 +30,15 @@ app explains the mathematical model in detail.
 | Manual     | Own composition parts and ingredients, typed in by hand          |
 | FAQ        | How the formulation works, how to enter costs, CSV format        |
 
-In the *Selected Ingredients* table only the cost and maximum inclusion
-columns can be edited; nutrient values are fixed.
+In the *Selected Ingredients* table only the cost and inclusion limit
+(min./max. inclusion) columns can be edited; nutrient values are fixed.
 
 ### CSV import format
 
 One row per ingredient with the columns `ingredient`, `protein`, `lipid`,
 `carbohydrate`, `ash` (all in %) and `energy` (MJ/kg). Optional columns are
-`cost` (price per kg), `max_inclusion` (maximum inclusion rate in % of the
-mix) and `category`. Comma- and semicolon-separated files are
+`cost` (price per kg), `min_inclusion` / `max_inclusion` (minimum / maximum
+inclusion rate in % of the mix) and `category`. Comma- and semicolon-separated files are
 accepted. A template can be downloaded on the Import tab (it is also in
 `data/templates/ingredients_template.csv`).
 

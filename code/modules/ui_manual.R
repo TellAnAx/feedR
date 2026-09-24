@@ -5,8 +5,8 @@
 #   1. define the composition parts (nutrients) to formulate for, each with
 #      a target value,
 #   2. add the available ingredients row by row with their content of every
-#      composition part (and optionally a cost and a maximum inclusion
-#      rate in % of the mix).
+#      composition part (and optionally a cost and minimum / maximum
+#      inclusion rates in % of the mix).
 # All entered ingredients are automatically used in the formulation.
 # =============================================================================
 
@@ -45,13 +45,14 @@ ui_manual <- function(id) {
           textInput(ns("ingredient_name"), "Ingredient name",
                     placeholder = "e.g. Fish meal"),
           uiOutput(ns("ingredient_values")),
+          numericInput(ns("ingredient_cost"), "Cost per kg", value = NA, min = 0),
           fluidRow(
-            column(6, numericInput(ns("ingredient_cost"), "Cost per kg",
-                                   value = NA, min = 0)),
+            column(6, numericInput(ns("ingredient_min_inclusion"), "Min. inclusion (%)",
+                                   value = NA, min = 0, max = 100)),
             column(6, numericInput(ns("ingredient_max_inclusion"), "Max. inclusion (%)",
                                    value = NA, min = 0, max = 100))
           ),
-          helpText("Cost and maximum inclusion rate are optional."),
+          helpText("Cost and inclusion limits (% of the mix) are optional."),
           actionButton(ns("add_ingredient"), "Add Ingredient", icon = icon("plus"))
         ),
 

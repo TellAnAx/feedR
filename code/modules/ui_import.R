@@ -19,8 +19,8 @@ ui_import <- function(id) {
       helpText(
         "Required columns: ingredient, protein, lipid, carbohydrate, ash",
         "(all in % of the ingredient) and energy (MJ/kg).",
-        "Optional columns: cost (per kg), max_inclusion (% of the mix)",
-        "and category.",
+        "Optional columns: cost (per kg), min_inclusion and max_inclusion",
+        "(% of the mix) and category.",
         "Comma- or semicolon-separated files are accepted."
       ),
       downloadButton(ns("template"), "Download CSV template",

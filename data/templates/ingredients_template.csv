@@ -1,6 +1,6 @@
-category,ingredient,protein,lipid,carbohydrate,ash,energy,cost,max_inclusion
-fish,"Fish meal, anchoveta, South America, 64% CP",63.6,8.4,4.4,15.6,19,,
-plant,"Soybean meal, non-dehulled, 40% CP, expeller",41.3,6.2,36.5,5.6,18,,
-plant,"Corn gluten meal, 60% CP",59.9,1.6,27,2.4,19,,
-plant,Wheat bran,17.3,3.9,60.5,5.6,16,,
-oil,"Fish oil, anchovy",0,99,0,0,39,,
+category,ingredient,protein,lipid,carbohydrate,ash,energy,cost,min_inclusion,max_inclusion
+fish,"Fish meal, anchoveta, South America, 64% CP",63.6,8.4,4.4,15.6,19,,,
+plant,"Soybean meal, non-dehulled, 40% CP, expeller",41.3,6.2,36.5,5.6,18,,,
+plant,"Corn gluten meal, 60% CP",59.9,1.6,27,2.4,19,,,
+plant,Wheat bran,17.3,3.9,60.5,5.6,16,,,
+oil,"Fish oil, anchovy",0,99,0,0,39,,,

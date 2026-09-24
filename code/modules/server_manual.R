@@ -8,8 +8,9 @@
 #                 what the user typed. `maximum` is optional (NA = none); if it
 #                 is set, `target` is treated as the minimum.
 #   ingredients - data.frame with columns ingredient, one column per part key,
-#                 cost and max_inclusion (maximum inclusion rate in % of the
-#                 mix, NA = no limit). Every row is used in the formulation.
+#                 cost, min_inclusion and max_inclusion (minimum / maximum
+#                 inclusion rate in % of the mix, NA = no limit). Every row is
+#                 used in the formulation.
 #
 # The formulation itself is done by formulate_feed() and format_solution()
 # (code/helper_functions.R), called with the user's parts as `nutrients`.
@@ -26,7 +27,7 @@ server_manual <- function(id) {
     empty_parts <- data.frame(key = character(), name = character(),
                               target = numeric(), maximum = numeric())
     empty_ingredients <- data.frame(ingredient = character(), cost = numeric(),
-                                    max_inclusion = numeric())
+                                    min_inclusion = numeric(), max_inclusion = numeric())
 
     parts <- reactiveVal(empty_parts)
     ingredients <- reactiveVal(empty_ingredients)
@@ -82,7 +83,8 @@ server_manual <- function(id) {
       # filled in by editing the ingredients table
       current <- ingredients()
       current[[key]] <- rep(NA_real_, nrow(current))
-      ingredients(current[, c("ingredient", parts()$key, "cost", "max_inclusion")])
+      ingredients(current[, c("ingredient", parts()$key, "cost",
+                              "min_inclusion", "max_inclusion")])
       if (nrow(current) > 0) {
         log_info(log_ctx, nrow(current), " existing ingredient(s) need a value for '", name, "'")
       }
@@ -191,6 +193,8 @@ server_manual <- function(id) {
       })
       cost <- input$ingredient_cost
       if (is.null(cost)) cost <- NA_real_
+      min_inclusion <- input$ingredient_min_inclusion
+      if (is.null(min_inclusion)) min_inclusion <- NA_real_
       max_inclusion <- input$ingredient_max_inclusion
       if (is.null(max_inclusion)) max_inclusion <- NA_real_
 
@@ -210,16 +214,24 @@ server_manual <- function(id) {
       if (!is.na(cost) && cost < 0) {
         return(notify_error("The cost must not be negative."))
       }
+      if (!is.na(min_inclusion) && (min_inclusion < 0 || min_inclusion > 100)) {
+        return(notify_error("The minimum inclusion rate must be between 0 and 100 %."))
+      }
       if (!is.na(max_inclusion) && (max_inclusion < 0 || max_inclusion > 100)) {
         return(notify_error("The maximum inclusion rate must be between 0 and 100 %."))
       }
+      if (!is.na(min_inclusion) && !is.na(max_inclusion) && min_inclusion > max_inclusion) {
+        return(notify_error("The minimum inclusion rate must not be larger than the maximum."))
+      }
 
       new_row <- data.frame(ingredient = name, as.list(set_names(values, current_parts$key)),
-                            cost = cost, max_inclusion = max_inclusion)
+                            cost = cost, min_inclusion = min_inclusion,
+                            max_inclusion = max_inclusion)
       ingredients(rbind(ingredients(), new_row))
       log_info(log_ctx, "Added ingredient '", name, "': ",
                paste(current_parts$name, "=", fmt_num_each(values), collapse = ", "),
-               ", cost = ", fmt_num(cost), ", max. inclusion = ", fmt_num(max_inclusion), " %")
+               ", cost = ", fmt_num(cost), ", inclusion limits = ", fmt_num(min_inclusion),
+               "-", fmt_num(max_inclusion), " %")
       bump(ingredients_version)
 
       updateTextInput(session, "ingredient_name", value = "")
@@ -234,7 +246,7 @@ server_manual <- function(id) {
         current,
         rownames = FALSE,
         colnames = c("Ingredient", current_parts$name, "Cost (per kg)",
-                     "Max. inclusion (%)"),
+                     "Min. inclusion (%)", "Max. inclusion (%)"),
         selection = "multiple",
         editable = list(target = "cell", disable = list(columns = 0)),
         options = list(dom = "tip", pageLength = 25,
@@ -252,7 +264,7 @@ server_manual <- function(id) {
       problem <- if (column == "ingredient") {
         "The name cannot be changed; remove the ingredient and add it again."
       } else if (column %in% EDITABLE_SELECTION_COLUMNS) {
-        validate_optional_value(raw, value, column)  # cost / max. inclusion
+        validate_optional_value(raw, value, column)  # cost / inclusion limits
       } else if (raw != "" && is.na(value)) {
         "Please enter a number."
       }
@@ -263,6 +275,7 @@ server_manual <- function(id) {
       }
 
       column_name <- c(set_names(parts()$name, parts()$key), cost = "cost",
+                       min_inclusion = "min. inclusion (%)",
                        max_inclusion = "max. inclusion (%)")[[column]]
       log_info(log_ctx, "Set ", column_name, " of '", current$ingredient[edit$row],
                "' to ", fmt_num(value))
@@ -297,7 +310,8 @@ server_manual <- function(id) {
 
       bound_problems <- c(
         check_bounds(targets, maxima, current_parts$name),
-        check_inclusion_limits(current$max_inclusion, current$ingredient)
+        check_inclusion_limits(current$min_inclusion, current$max_inclusion,
+                               current$ingredient)
       )
 
       if (nrow(current_parts) == 0) {
