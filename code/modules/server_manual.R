@@ -2,9 +2,11 @@
 # server_manual.R - server logic of the "Manual" tab
 #
 # State:
-#   parts       - data.frame(key, name, target): the composition parts defined
-#                 by the user. `key` is an internal, input-id-safe column name
-#                 ("part1", "part2", ...); `name` is what the user typed.
+#   parts       - data.frame(key, name, target, maximum): the composition
+#                 parts defined by the user. `key` is an internal,
+#                 input-id-safe column name ("part1", "part2", ...); `name` is
+#                 what the user typed. `maximum` is optional (NA = none); if it
+#                 is set, `target` is treated as the minimum.
 #   ingredients - data.frame with columns ingredient, one column per part key
 #                 and cost. Every row is used in the formulation.
 #
@@ -16,9 +18,12 @@
 server_manual <- function(id) {
   moduleServer(id, function(input, output, session) {
 
+    log_ctx <- id
+    log_debug(log_ctx, "Manual tab initialised")
+
     # State ----
     empty_parts <- data.frame(key = character(), name = character(),
-                              target = numeric())
+                              target = numeric(), maximum = numeric())
     empty_ingredients <- data.frame(ingredient = character(), cost = numeric())
 
     parts <- reactiveVal(empty_parts)
@@ -34,14 +39,19 @@ server_manual <- function(id) {
     ingredients_version <- reactiveVal(0)
     bump <- function(version) version(version() + 1)
 
-    notify_error <- function(...) showNotification(paste0(...), type = "error")
+    # Shows an error to the user and writes it to the log
+    notify_error <- function(...) {
+      log_warn(log_ctx, "Rejected input: ", paste0(...))
+      showNotification(paste0(...), type = "error")
+    }
 
 
     # Step 1: composition parts ----
 
     # Adds a composition part; returns FALSE (with a notification) if invalid
-    add_part <- function(name, target) {
+    add_part <- function(name, target, maximum = NA_real_) {
       name <- str_trim(name)
+      if (is.null(maximum)) maximum <- NA_real_
       if (name == "") {
         notify_error("Please enter a name for the composition part.")
         return(FALSE)
@@ -54,16 +64,26 @@ server_manual <- function(id) {
         notify_error("Please enter a target value for '", name, "'.")
         return(FALSE)
       }
+      if (!is.na(maximum) && maximum < target) {
+        notify_error("The maximum for '", name, "' must not be smaller than the minimum.")
+        return(FALSE)
+      }
 
       key <- paste0("part", next_key())
       next_key(next_key() + 1)
-      parts(rbind(parts(), data.frame(key = key, name = name, target = target)))
+      parts(rbind(parts(), data.frame(key = key, name = name, target = target,
+                                      maximum = maximum)))
+      log_info(log_ctx, "Added composition part '", name, "' (key ", key,
+               ", target ", fmt_num(target), ", maximum ", fmt_num(maximum), ")")
 
       # Existing ingredients get an empty value for the new part, to be
       # filled in by editing the ingredients table
       current <- ingredients()
       current[[key]] <- rep(NA_real_, nrow(current))
       ingredients(current[, c("ingredient", parts()$key, "cost")])
+      if (nrow(current) > 0) {
+        log_info(log_ctx, nrow(current), " existing ingredient(s) need a value for '", name, "'")
+      }
 
       bump(parts_version)
       bump(ingredients_version)
@@ -71,12 +91,13 @@ server_manual <- function(id) {
     }
 
     observeEvent(input$add_part, {
-      if (add_part(input$part_name, input$part_target)) {
+      if (add_part(input$part_name, input$part_target, input$part_max)) {
         updateTextInput(session, "part_name", value = "")
       }
     })
 
     observeEvent(input$load_standard, {
+      log_info(log_ctx, "Adding standard nutrients")
       defaults <- c(protein = 20, lipid = 5, carbohydrate = 8, ash = 6, energy = 12)
       for (nutrient in NUTRIENTS) {
         name <- NUTRIENT_LABELS[[nutrient]]
@@ -91,9 +112,9 @@ server_manual <- function(id) {
       current <- isolate(parts())
 
       datatable(
-        current[, c("name", "target")],
+        current[, c("name", "target", "maximum")],
         rownames = FALSE,
-        colnames = c("Composition part", "Target"),
+        colnames = c("Composition part", "Target / minimum", "Maximum (optional)"),
         selection = "multiple",
         editable = list(target = "cell", disable = list(columns = 0)),
         options = list(dom = "t", pageLength = -1,
@@ -103,15 +124,27 @@ server_manual <- function(id) {
 
     observeEvent(input$parts_table_cell_edit, {
       edit <- input$parts_table_cell_edit
-      value <- parse_decimal(edit$value)
       current <- parts()
+      column <- c("name", "target", "maximum")[edit$col + 1]
+      raw <- str_trim(as.character(edit$value))
+      value <- parse_decimal(raw)
 
-      if (edit$col != 1 || is.na(value)) {
-        if (edit$col == 1) notify_error("The target must be a number.")
+      # Target: required number; maximum: empty (= no maximum) or a number
+      problem <- if (column == "name") {
+        "The name cannot be changed; remove the part and add it again."
+      } else if (column == "target" && is.na(value)) {
+        "The target must be a number."
+      } else if (column == "maximum" && raw != "" && is.na(value)) {
+        "The maximum must be empty or a number."
+      }
+      if (!is.null(problem)) {
+        notify_error(problem)
         bump(parts_version)  # restore previous value
         return()
       }
-      current$target[edit$row] <- value
+
+      log_info(log_ctx, "Set ", column, " of '", current$name[edit$row], "' to ", fmt_num(value))
+      current[[column]][edit$row] <- value
       parts(current)
     })
 
@@ -121,6 +154,8 @@ server_manual <- function(id) {
         notify_error("Click on composition parts in the table to select them first.")
         return()
       }
+      log_info(log_ctx, "Removed composition part(s): ",
+               paste(parts()$name[rows], collapse = "; "))
       removed_keys <- parts()$key[rows]
       parts(parts()[-rows, , drop = FALSE])
       current <- ingredients()
@@ -175,6 +210,9 @@ server_manual <- function(id) {
       new_row <- data.frame(ingredient = name, as.list(set_names(values, current_parts$key)),
                             cost = cost)
       ingredients(rbind(ingredients(), new_row))
+      log_info(log_ctx, "Added ingredient '", name, "': ",
+               paste(current_parts$name, "=", map_chr(values, fmt_num), collapse = ", "),
+               ", cost = ", fmt_num(cost))
       bump(ingredients_version)
 
       updateTextInput(session, "ingredient_name", value = "")
@@ -216,6 +254,9 @@ server_manual <- function(id) {
         return()
       }
 
+      column_name <- c(set_names(parts()$name, parts()$key), cost = "cost")[[column]]
+      log_info(log_ctx, "Set ", column_name, " of '", current$ingredient[edit$row],
+               "' to ", fmt_num(value))
       current[[column]][edit$row] <- value  # empty input -> NA
       ingredients(current)
     })
@@ -226,6 +267,8 @@ server_manual <- function(id) {
         notify_error("Click on ingredients in the table to select them first.")
         return()
       }
+      log_info(log_ctx, "Removed ingredient(s): ",
+               paste(ingredients()$ingredient[rows], collapse = "; "))
       ingredients(ingredients()[-rows, , drop = FALSE])
       bump(ingredients_version)
     })
@@ -236,11 +279,21 @@ server_manual <- function(id) {
       current_parts <- parts()
       current <- ingredients()
       values <- as.matrix(current[, current_parts$key, drop = FALSE])
+      targets <- set_names(current_parts$target, current_parts$key)
+      maxima <- set_names(current_parts$maximum, current_parts$key)
+
+      log_info(log_ctx, "Formulate clicked: ", nrow(current), " ingredients, ",
+               nrow(current_parts), " composition parts, ",
+               if (isTRUE(input$least_cost)) "least-cost" else "target matching")
+
+      bound_problems <- check_bounds(targets, maxima, current_parts$name)
 
       if (nrow(current_parts) == 0) {
         solution("Please define at least one composition part (step 1).")
       } else if (nrow(current) == 0) {
         solution("Please add at least one ingredient (step 2).")
+      } else if (length(bound_problems) > 0) {
+        solution(c("Please check the composition parts:", paste0("  - ", bound_problems)))
       } else if (anyNA(values)) {
         missing <- current$ingredient[rowSums(is.na(values)) > 0]
         solution(c(
@@ -259,14 +312,18 @@ server_manual <- function(id) {
       } else {
         result <- formulate_feed(
           current,
-          targets = set_names(current_parts$target, current_parts$key),
+          targets = targets,
+          maxima = maxima,
           least_cost = input$least_cost,
           label_col = "ingredient",
           nutrients = current_parts$key,
-          nutrient_labels = current_parts$name
+          nutrient_labels = current_parts$name,
+          log_context = log_ctx
         )
         solution(format_solution(result))
+        return()
       }
+      log_warn(log_ctx, "Formulation not started: ", solution()[1])
     })
 
     output$solution_text <- renderPrint({
@@ -275,6 +332,7 @@ server_manual <- function(id) {
     })
 
     observeEvent(input$clear_all, {
+      log_info(log_ctx, "Start over: all composition parts and ingredients removed")
       parts(empty_parts)
       ingredients(empty_ingredients)
       solution(NULL)

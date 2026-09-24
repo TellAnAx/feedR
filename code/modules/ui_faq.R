@@ -111,11 +111,40 @@ ui_faq <- function(id) {
         "& x_i \\ge 0",
         "\\end{aligned}$$"
       )),
+
+      h4("Optional maximum: minimum-maximum ranges"),
       p(
-        "If the selected ingredients cannot reach all targets at the same",
-        "time, the problem is", tags$em("infeasible"), "and FeedR reports",
-        "that no solution was found. Lower the targets or add ingredients",
-        "that are rich in the limiting nutrient(s)."
+        "Every nutrient (and every composition part on the Manual tab) has an",
+        "optional", tags$em("Maximum"), "field. If a maximum \\(m_j\\) is",
+        "set, the target \\(t_j\\) is treated as a minimum and the mix must",
+        "lie within the range, in both modes:"
+      ),
+      p("$$t_j \\le \\sum_{i} a_{ij} \\, x_i \\le m_j$$"),
+      p(
+        "In mode 1 such a nutrient is no longer part of the deviation that is",
+        "minimised; it is a hard requirement instead. In mode 2 it replaces the",
+        "plain minimum. The solution table then shows", tags$em("in range"),
+        "for this nutrient."
+      ),
+
+      h4("What if no solution is found?"),
+      p(
+        "If the selected ingredients cannot satisfy all hard requirements",
+        "(ranges, and in least-cost mode all minima) at the same time, the",
+        "problem is", tags$em("infeasible."), "FeedR then explains why:"
+      ),
+      tags$ul(
+        tags$li("A requirement is impossible on its own if the required range",
+                "does not overlap the range spanned by the selected ingredients",
+                "(the mix is an average, so it can never contain more of a",
+                "nutrient than the richest ingredient, or less than the poorest)."),
+        tags$li("Otherwise, FeedR checks every pair of requirements and lists",
+                "the combinations that cannot be met together.")
+      ),
+      p(
+        "Widen the ranges, lower the minima or add ingredients that are rich",
+        "(or poor) in the limiting nutrient(s). A maximum below its minimum is",
+        "reported before the calculation starts."
       ),
 
       h4("Reading the solution"),
@@ -123,8 +152,8 @@ ui_faq <- function(id) {
         tags$li("Inclusion rates are given in % of the mix, which is the same",
                 "as kg per 100 kg of feed. Ingredients the optimiser did not",
                 "use are omitted."),
-        tags$li("The nutrient table compares the targets with the composition",
-                "actually achieved by the mix."),
+        tags$li("The nutrient table compares the targets (or minimum and",
+                "maximum) with the composition actually achieved by the mix."),
         tags$li("The cost of the mix is shown whenever costs are available for",
                 "all selected ingredients.")
       ),
@@ -135,9 +164,7 @@ ui_faq <- function(id) {
                 "amino acids, minerals, digestibility etc. are not."),
         tags$li("There are no minimum or maximum inclusion limits per",
                 "ingredient, so the optimiser may use a single ingredient at",
-                "a very high rate."),
-        tags$li("In least-cost mode every target is a minimum; there are no",
-                "upper limits (e.g. a maximum ash content).")
+                "a very high rate.")
       ),
 
       h3("How do I enter ingredient costs?"),

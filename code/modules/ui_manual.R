@@ -24,7 +24,14 @@ ui_manual <- function(id) {
             "values in the mix, e.g. \"Protein (%)\" with target 40."
           ),
           textInput(ns("part_name"), "Name", placeholder = "e.g. Protein (%)"),
-          numericInput(ns("part_target"), "Target in the mix", value = NA),
+          fluidRow(
+            column(7, numericInput(ns("part_target"), "Target in the mix", value = NA)),
+            column(5, numericInput(ns("part_max"), "Maximum", value = NA))
+          ),
+          helpText(
+            "Maximum is optional. If it is set, the target becomes a minimum",
+            "and the mix must lie between the two values."
+          ),
           actionButton(ns("add_part"), "Add Composition Part", icon = icon("plus")),
           tags$br(), tags$br(),
           actionButton(ns("load_standard"), "Add Standard Nutrients",
@@ -53,7 +60,8 @@ ui_manual <- function(id) {
       mainPanel(
         h3("Composition Parts"),
         helpText(
-          "Double-click a target to change it. Click rows to select them for removal."
+          "Double-click a target or maximum to change it (clear the maximum",
+          "to remove it). Click rows to select them for removal."
         ),
         DTOutput(ns("parts_table")),
         actionButton(ns("remove_parts"), "Remove Selected Parts", class = "btn-sm"),

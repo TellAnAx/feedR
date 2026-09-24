@@ -17,7 +17,8 @@
 
 # IAFFD - full----
 # Categories are derived from the first digit(s) of the FICD ingredient code.
-feed_data <- read_csv("data/FICD 2025-10-27.csv") %>%
+log_info("data", "Reading feed ingredient database data/FICD 2025-10-27.csv")
+feed_data <- read_csv("data/FICD 2025-10-27.csv", show_col_types = FALSE) %>%
   rename_with(str_to_lower) %>%
   mutate(
     category1 = case_when(
@@ -48,8 +49,9 @@ feed_data <- read_csv("data/FICD 2025-10-27.csv") %>%
     energy = "gross energy -mj (mj/kg)"
     )
 
-print("Feed data successfully loaded!")
-print(head(feed_data))
+log_info("data", "Feed data loaded: ", nrow(feed_data), " ingredients in ",
+         n_distinct(feed_data$category1), " categories")
+log_object("data", "First rows of feed_data:", head(feed_data))
 
 
 # IAFFD - summarised----
@@ -65,8 +67,8 @@ feed_data_summarised <- feed_data %>%
   ) %>%
   drop_na()
 
-print("Feed data successfully summarised!")
-print(head(feed_data_summarised))
+log_info("data", "Feed data summarised: ", nrow(feed_data_summarised), " categories")
+log_object("data", "feed_data_summarised:", feed_data_summarised)
 
 
 

@@ -26,7 +26,10 @@ problem with [lpSolve](https://cran.r-project.org/package=lpSolve), either
 - minimising the cost of the mix while meeting every nutrient target
   (least-cost formulation).
 
-The FAQ tab of the app explains the mathematical model in detail.
+Every target can optionally be given a maximum; the target is then treated
+as a minimum and the mix must lie within that range. If the requirements
+cannot be met, the app explains which of them conflict. The FAQ tab of the
+app explains the mathematical model in detail.
 
 ### Tabs
 
@@ -56,12 +59,29 @@ install.packages(c("shiny", "lpSolve", "tidyverse", "DT"))
 shiny::runApp()  # from the repository root
 ```
 
+### Logging
+
+Everything that happens under the hood (data loading, user actions, the
+linear programs that are built and their solutions) is logged to the R
+console, e.g.
+
+```
+14:03:12.345 [INFO ] [full] Formulate clicked: 3 ingredients, target matching
+14:03:12.350 [INFO ] [full] Solver status 0 (optimal solution found), objective = 16.38
+```
+
+The default level `DEBUG` also prints the full LP model and solver output.
+Reduce the detail with `options(feedr.log_level = "INFO")` (or `WARN`,
+`ERROR`) before starting the app, or set the environment variable
+`FEEDR_LOG_LEVEL`.
+
 ### Code structure
 
 ```
 app.R                      entry point; sources all files in order
 dependencies.R             required packages
 code/
+  logging.R                console logging helpers (log_info(), log_debug(), ...)
   data_prep.R              loads the ingredient database (feed_data, feed_data_summarised)
   helper_functions.R       LP formulation, selection handling, CSV import, output formatting
   ui.R / server.R          top-level UI and server combining the tabs

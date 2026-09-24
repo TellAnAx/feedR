@@ -32,13 +32,15 @@ formulation_ui <- function(id, sidebar_top = NULL, main_top = NULL) {
 
         wellPanel(
           h4("Targeted Nutrient Composition"),
-          numericInput(ns("protein_req"), "Protein (%)", value = 20, min = 0, max = 100),
-          numericInput(ns("fat_req"), "Fat (%)", value = 5, min = 0, max = 100),
-          numericInput(ns("carbohydrate_req"), "Carbohydrate (%)", value = 8, min = 0, max = 100),
-          numericInput(ns("ash_req"), "Ash (%)", value = 6, min = 0, max = 100),
-          tags$br(),
-          numericInput(ns("energy_req"), "Energy (MJ/kg)", value = 12, min = 0, max = 100),
-          tags$br(),
+          helpText(
+            "Maximum is optional. If it is set, the target becomes a",
+            "minimum and the mix must lie between the two values."
+          ),
+          target_input_row(ns, "protein", "Protein (%)", 20),
+          target_input_row(ns, "lipid", "Fat (%)", 5),
+          target_input_row(ns, "carbohydrate", "Carbohydrate (%)", 8),
+          target_input_row(ns, "ash", "Ash (%)", 6),
+          target_input_row(ns, "energy", "Energy (MJ/kg)", 12),
           checkboxInput(ns("least_cost"), "Perform Least-Cost Formulation", value = FALSE),
           actionButton(ns("formulate"), "Formulate"),
           actionButton(ns("clear_selection"), "Clear Selection")
@@ -68,6 +70,28 @@ formulation_ui <- function(id, sidebar_top = NULL, main_top = NULL) {
 }
 
 
+#' Input-id prefixes of the target inputs per nutrient. The target input is
+#' "<prefix>_req", the optional maximum "<prefix>_max".
+TARGET_INPUT_PREFIX <- c(protein = "protein", lipid = "fat",
+                         carbohydrate = "carbohydrate", ash = "ash",
+                         energy = "energy")
+
+
+#' One row of the target sidebar: target (or minimum) and optional maximum
+#'
+#' @param ns namespace function of the module.
+#' @param nutrient one of NUTRIENTS.
+#' @param label label of the target input.
+#' @param value default target.
+target_input_row <- function(ns, nutrient, label, value) {
+  prefix <- TARGET_INPUT_PREFIX[[nutrient]]
+  fluidRow(
+    column(7, numericInput(ns(paste0(prefix, "_req")), label, value = value, min = 0)),
+    column(5, numericInput(ns(paste0(prefix, "_max")), "Maximum", value = NA, min = 0))
+  )
+}
+
+
 #' Server logic of a formulation tab
 #'
 #' Must be called from inside moduleServer() of a tab module, passing that
@@ -89,6 +113,10 @@ setup_formulation <- function(input, output, session, available_data,
                               label_title = "Ingredient",
                               empty_message = "No ingredients available.") {
 
+  # Module id (e.g. "full"), used to tag log messages
+  log_ctx <- sub("-$", "", session$ns(""))
+  log_debug(log_ctx, "Formulation tab initialised (ingredient column: ", label_col, ")")
+
   # State ----
   # Ingredients selected by the user (persists across filter changes) and the
   # most recent formulation result or message.
@@ -103,6 +131,7 @@ setup_formulation <- function(input, output, session, available_data,
   feed_proxy <- dataTableProxy("feed_table")
 
   clear <- function() {
+    log_info(log_ctx, "Selection and solution cleared")
     selected_ingredients(NULL)
     selection_version(selection_version() + 1)
     solution(NULL)
@@ -114,6 +143,7 @@ setup_formulation <- function(input, output, session, available_data,
   output$feed_table <- renderDT({
     data <- available_data()
     validate(need(!is.null(data) && nrow(data) > 0, empty_message))
+    log_debug(log_ctx, "Rendering available ingredients table (", nrow(data), " rows)")
 
     display_cols <- intersect(c(label_col, NUTRIENTS, "cost"), names(data))
     datatable(
@@ -129,9 +159,14 @@ setup_formulation <- function(input, output, session, available_data,
   # Add newly clicked rows to the persistent selection
   observeEvent(input$feed_table_rows_selected, {
     picked <- available_data()[input$feed_table_rows_selected, , drop = FALSE]
-    selected_ingredients(
-      add_to_selection(selected_ingredients(), picked, label_col)
-    )
+    before <- selected_ingredients()
+    after <- add_to_selection(before, picked, label_col)
+    added <- setdiff(after[[label_col]], before[[label_col]])
+    if (length(added) > 0) {
+      log_info(log_ctx, "Added to selection: ", paste(added, collapse = "; "),
+               " (now ", nrow(after), " selected)")
+    }
+    selected_ingredients(after)
     selection_version(selection_version() + 1)
   })
 
@@ -166,9 +201,11 @@ setup_formulation <- function(input, output, session, available_data,
     edit <- input$selected_feed_table_cell_edit
     selection <- selected_ingredients()
     column <- names(selection)[edit$col + 1]
+    ingredient <- selection[[label_col]][edit$row]
 
     # Defensive check: only the cost column may be changed
     if (!identical(column, "cost")) {
+      log_warn(log_ctx, "Rejected edit of locked column '", column, "' for ", ingredient)
       selection_version(selection_version() + 1)  # restore original values
       return()
     }
@@ -177,11 +214,13 @@ setup_formulation <- function(input, output, session, available_data,
     value <- parse_decimal(raw)
 
     if (raw != "" && (is.na(value) || value < 0)) {
+      log_warn(log_ctx, "Rejected invalid cost '", raw, "' for ", ingredient)
       showNotification("Cost must be a non-negative number.", type = "error")
       selection_version(selection_version() + 1)  # restore previous value
       return()
     }
 
+    log_info(log_ctx, "Cost of ", ingredient, " set to ", fmt_num(value))
     selection$cost[edit$row] <- value  # empty input -> NA (cost not entered)
     selected_ingredients(selection)
   })
@@ -190,18 +229,25 @@ setup_formulation <- function(input, output, session, available_data,
   # Formulation ----
   observeEvent(input$formulate, {
     selection <- selected_ingredients()
-    targets <- c(
-      protein      = input$protein_req,
-      lipid        = input$fat_req,
-      carbohydrate = input$carbohydrate_req,
-      ash          = input$ash_req,
-      energy       = input$energy_req
-    )
+    read_inputs <- function(suffix) {
+      map_dbl(TARGET_INPUT_PREFIX[NUTRIENTS], function(prefix) {
+        value <- input[[paste0(prefix, suffix)]]
+        if (is.null(value)) NA_real_ else value
+      }) %>% set_names(NUTRIENTS)
+    }
+    targets <- read_inputs("_req")
+    maxima <- read_inputs("_max")
+
+    log_info(log_ctx, "Formulate clicked: ", NROW(selection), " ingredients, ",
+             if (isTRUE(input$least_cost)) "least-cost" else "target matching")
+    log_debug(log_ctx, "Targets/minima: ", fmt_num(targets), " | maxima: ", fmt_num(maxima))
+
+    bound_problems <- check_bounds(targets, maxima, NUTRIENT_LABELS[NUTRIENTS])
 
     if (is.null(selection) || nrow(selection) == 0) {
       solution("Please select at least one ingredient.")
-    } else if (any(is.na(targets))) {
-      solution("Please enter a value for every nutrient target.")
+    } else if (length(bound_problems) > 0) {
+      solution(c("Please check the nutrient targets:", paste0("  - ", bound_problems)))
     } else if (input$least_cost && any(is.na(selection$cost))) {
       missing <- selection[[label_col]][is.na(selection$cost)]
       solution(c(
@@ -211,9 +257,14 @@ setup_formulation <- function(input, output, session, available_data,
         "Please enter cost values in the Selected Ingredients table."
       ))
     } else {
-      result <- formulate_feed(selection, targets, input$least_cost, label_col)
+      result <- formulate_feed(selection, targets, maxima,
+                               least_cost = input$least_cost,
+                               label_col = label_col,
+                               log_context = log_ctx)
       solution(format_solution(result))
+      return()
     }
+    log_warn(log_ctx, "Formulation not started: ", solution()[1])
   })
 
   output$solution_text <- renderPrint({

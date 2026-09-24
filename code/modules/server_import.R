@@ -14,10 +14,15 @@ server_import <- function(id) {
     # success or list(error = <message>) if the file is invalid.
     imported <- reactive({
       req(input$file)
-      tryCatch(
-        list(data = read_ingredient_csv(input$file$datapath)),
-        error = function(e) list(error = conditionMessage(e))
-      )
+      log_info(id, "File uploaded: ", input$file$name, " (", input$file$size, " bytes)")
+      tryCatch({
+        data <- read_ingredient_csv(input$file$datapath, log_context = id)
+        log_info(id, "Imported ", nrow(data), " ingredients from ", input$file$name)
+        list(data = data)
+      }, error = function(e) {
+        log_warn(id, "Import of ", input$file$name, " failed: ", conditionMessage(e))
+        list(error = conditionMessage(e))
+      })
     })
 
     imported_data <- reactive({
@@ -42,7 +47,10 @@ server_import <- function(id) {
     # format, with an empty cost column to fill in.
     output$template <- downloadHandler(
       filename = "feedR_ingredients_template.csv",
-      content = function(file) file.copy(INGREDIENT_TEMPLATE, file),
+      content = function(file) {
+        log_info(id, "CSV template downloaded")
+        file.copy(INGREDIENT_TEMPLATE, file)
+      },
       contentType = "text/csv"
     )
 

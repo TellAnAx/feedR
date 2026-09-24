@@ -23,6 +23,11 @@ server_full <- function(id) {
       }
     })
 
+    observeEvent(input$category_filter, {
+      log_info(id, "Category filter set to '", input$category_filter, "' (",
+               nrow(filtered_data()), " ingredients shown)")
+    })
+
     setup_formulation(
       input, output, session,
       available_data = filtered_data,
