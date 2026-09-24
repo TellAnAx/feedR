@@ -35,6 +35,7 @@ The FAQ tab of the app explains the mathematical model in detail.
 | Simplified | Ingredient categories with averaged nutrient values              |
 | Full       | Individual ingredients of the feed ingredient database           |
 | Import     | Your own ingredient list, uploaded as a CSV file                 |
+| Manual     | Own composition parts and ingredients, typed in by hand          |
 | FAQ        | How the formulation works, how to enter costs, CSV format        |
 
 In the *Selected Ingredients* table only the cost column can be edited;
@@ -45,7 +46,8 @@ nutrient values are fixed.
 One row per ingredient with the columns `ingredient`, `protein`, `lipid`,
 `carbohydrate`, `ash` (all in %) and `energy` (MJ/kg). Optional columns are
 `cost` (price per kg) and `category`. Comma- and semicolon-separated files are
-accepted. A template can be downloaded on the Import tab.
+accepted. A template can be downloaded on the Import tab (it is also in
+`data/templates/ingredients_template.csv`).
 
 ### Running the app
 
@@ -68,8 +70,10 @@ code/
     ui_summary.R, server_summary.R   "Simplified" tab
     ui_full.R, server_full.R         "Full" tab
     ui_import.R, server_import.R     "Import" tab
+    ui_manual.R, server_manual.R     "Manual" tab
     ui_faq.R                         "FAQ" tab
 data/                      feed ingredient composition database (CSV)
+data/templates/            CSV template offered on the Import tab
 www/style.css              custom styling
 ```
 

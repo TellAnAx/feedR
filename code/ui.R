@@ -2,7 +2,7 @@
 # ui.R - top-level user interface
 #
 # Header, one tab per module and a footer. The module ids ("summary", "full",
-# "import", "faq") must match the ids used in code/server.R.
+# "import", "manual", "faq") must match the ids used in code/server.R.
 # =============================================================================
 
 ui <- fluidPage(
@@ -24,6 +24,7 @@ ui <- fluidPage(
     tabPanel("Simplified", ui_summary("summary")),
     tabPanel("Full", ui_full("full")),
     tabPanel("Import", ui_import("import")),
+    tabPanel("Manual", ui_manual("manual")),
     tabPanel("FAQ", ui_faq("faq"))
   ),
 

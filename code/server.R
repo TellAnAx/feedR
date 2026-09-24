@@ -9,4 +9,5 @@ server <- function(input, output, session) {
   server_summary("summary")
   server_full("full")
   server_import("import")
+  server_manual("manual")
 }

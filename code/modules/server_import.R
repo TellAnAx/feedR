@@ -38,17 +38,12 @@ server_import <- function(id) {
       }
     })
 
-    # Template: a few ingredients from the built-in database in the
-    # expected format, with an empty cost column to fill in.
+    # Template: a static example file (data/templates/) in the expected
+    # format, with an empty cost column to fill in.
     output$template <- downloadHandler(
       filename = "feedR_ingredients_template.csv",
-      content = function(file) {
-        template <- feed_data %>%
-          select(category = category1, ingredient, all_of(NUTRIENTS)) %>%
-          slice_head(n = 5) %>%
-          mutate(cost = NA_real_)
-        write_csv(template, file, na = "")
-      }
+      content = function(file) file.copy(INGREDIENT_TEMPLATE, file),
+      contentType = "text/csv"
     )
 
     formulation <- setup_formulation(

@@ -30,7 +30,11 @@ ui_faq <- function(id) {
         tags$li(tags$b("Full:"), "formulate with the individual ingredients",
                 "of the feed ingredient database."),
         tags$li(tags$b("Import:"), "formulate with your own ingredient list",
-                "uploaded as a CSV file.")
+                "uploaded as a CSV file."),
+        tags$li(tags$b("Manual:"), "define your own composition parts",
+                "(any nutrients, with target values) and type in the",
+                "available ingredients by hand. All entered ingredients are",
+                "used in the formulation.")
       ),
 
       h3("How is the formulation calculated?"),
@@ -147,6 +151,26 @@ ui_faq <- function(id) {
         "ingredients."
       ),
 
+      h3("How does the Manual tab work?"),
+      tags$ol(
+        tags$li("Define the composition parts to formulate for, each with a",
+                "target value, e.g. \"Protein (%)\" with target 40. The",
+                tags$em("Add Standard Nutrients"), "button adds protein,",
+                "lipid, carbohydrate, ash and energy in one go."),
+        tags$li("Add the available ingredients one by one with their content",
+                "of every composition part (in the same units as the target)",
+                "and, optionally, their cost per kg."),
+        tags$li("Click", tags$em("Formulate."), "All entered ingredients are",
+                "used; the model is the same as described above, only with",
+                "your composition parts instead of the five standard nutrients.")
+      ),
+      p(
+        "Targets and ingredient values can be corrected by double-clicking",
+        "them in the tables. If a composition part is added after ingredients",
+        "were entered, its values are empty and must be filled in before",
+        "formulating."
+      ),
+
       h3("Which CSV format does the Import tab expect?"),
       p(
         "The same format as the Available Ingredients table: one row per",
@@ -170,8 +194,9 @@ ui_faq <- function(id) {
       p(
         "Both comma-separated files (with a decimal point) and",
         "semicolon-separated files (with a decimal comma, as saved by Excel",
-        "in many European locales) are accepted. A template can be downloaded",
-        "on the Import tab."
+        "in many European locales) are accepted. A template CSV can be",
+        "downloaded with the", tags$em("Download CSV template"), "button on",
+        "the Import tab."
       )
     )
   )

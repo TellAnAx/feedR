@@ -174,7 +174,7 @@ setup_formulation <- function(input, output, session, available_data,
     }
 
     raw <- str_trim(as.character(edit$value))
-    value <- suppressWarnings(as.numeric(str_replace(raw, ",", ".")))
+    value <- parse_decimal(raw)
 
     if (raw != "" && (is.na(value) || value < 0)) {
       showNotification("Cost must be a non-negative number.", type = "error")

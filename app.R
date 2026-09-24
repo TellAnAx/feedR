@@ -23,11 +23,13 @@ source("code/modules/formulation.R")
 source("code/modules/ui_summary.R")
 source("code/modules/ui_full.R")
 source("code/modules/ui_import.R")
+source("code/modules/ui_manual.R")
 source("code/modules/ui_faq.R")
 
 source("code/modules/server_summary.R")
 source("code/modules/server_full.R")
 source("code/modules/server_import.R")
+source("code/modules/server_manual.R")
 
 source("code/ui.R")
 source("code/server.R")

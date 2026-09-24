@@ -22,7 +22,8 @@ ui_import <- function(id) {
         "Optional columns: cost (per kg) and category.",
         "Comma- or semicolon-separated files are accepted."
       ),
-      downloadLink(ns("template"), "Download a template CSV")
+      downloadButton(ns("template"), "Download CSV template",
+                     class = "btn-sm")
     ),
     main_top = uiOutput(ns("import_status"))
   )

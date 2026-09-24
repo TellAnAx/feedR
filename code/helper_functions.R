@@ -33,6 +33,24 @@ NUTRIENT_LABELS <- c(
 )
 
 
+#' Example ingredient CSV offered as a download template (Import tab).
+#' It uses the format expected by read_ingredient_csv().
+INGREDIENT_TEMPLATE <- "data/templates/ingredients_template.csv"
+
+
+# Parsing ---------------------------------------------------------------------
+
+#' Parse user-entered text as numbers
+#'
+#' Accepts both "." and "," as decimal separator (e.g. "2.5" and "2,5").
+#'
+#' @param x character (or numeric) vector.
+#' @return numeric vector; NA where the input is empty or not a number.
+parse_decimal <- function(x) {
+  suppressWarnings(as.numeric(str_replace(str_trim(as.character(x)), ",", ".")))
+}
+
+
 # Selection handling ----------------------------------------------------------
 
 #' Add ingredients to the persistent selection
@@ -94,28 +112,35 @@ add_to_selection <- function(selection, picked, label_col) {
 #'                x >= 0
 #'   i.e. the cheapest mix that meets at least every nutrient target.
 #'
-#' @param ingredients data.frame with columns `label_col`, NUTRIENTS and
+#' @param ingredients data.frame with columns `label_col`, `nutrients` and
 #'   (for least-cost formulation) `cost`.
-#' @param targets named numeric vector of targets, names = NUTRIENTS.
+#' @param targets named numeric vector of targets, names = `nutrients`.
 #' @param least_cost logical; use the least-cost model instead of target
 #'   matching.
 #' @param label_col name of the column identifying the ingredients.
+#' @param nutrients names of the nutrient (composition part) columns to
+#'   formulate for. Defaults to the built-in NUTRIENTS; the "Manual" tab
+#'   passes the composition parts defined by the user.
+#' @param nutrient_labels display names of `nutrients` (used in the output).
 #' @return A list with elements
 #'   * `feasible`: TRUE if the solver found an optimal solution,
 #'   * `mode`: "least_cost" or "target_matching",
 #'   * `inclusion`: named vector of inclusion fractions (sums to 1),
 #'   * `targets`, `achieved`: named nutrient vectors,
+#'   * `labels`: display names of the nutrients,
 #'   * `total_cost`: cost of 1 kg of the mix (NA if costs are missing),
 #'   * `objective`: value of the objective function,
 #'   * `status`: raw lpSolve status code (0 = optimal, 2 = infeasible, ...).
 formulate_feed <- function(ingredients, targets, least_cost = FALSE,
-                           label_col = "ingredient") {
-  targets <- targets[NUTRIENTS]
+                           label_col = "ingredient",
+                           nutrients = NUTRIENTS,
+                           nutrient_labels = NUTRIENT_LABELS[nutrients]) {
+  targets <- targets[nutrients]
   n_ing <- nrow(ingredients)
-  n_nut <- length(NUTRIENTS)
+  n_nut <- length(nutrients)
 
   # Nutrient matrix A: one row per nutrient, one column per ingredient
-  A <- t(as.matrix(ingredients[, NUTRIENTS]))
+  A <- t(as.matrix(ingredients[, nutrients, drop = FALSE]))
   mass_balance <- rep(1, n_ing)  # sum of inclusion rates = 1 (i.e. 100 %)
 
   if (least_cost) {
@@ -140,7 +165,7 @@ formulate_feed <- function(ingredients, targets, least_cost = FALSE,
   inclusion <- result$solution[seq_len(n_ing)]
   names(inclusion) <- ingredients[[label_col]]
   achieved <- as.vector(A %*% inclusion)
-  names(achieved) <- NUTRIENTS
+  names(achieved) <- nutrients
 
   list(
     feasible   = result$status == 0,
@@ -148,6 +173,7 @@ formulate_feed <- function(ingredients, targets, least_cost = FALSE,
     inclusion  = inclusion,
     targets    = targets,
     achieved   = achieved,
+    labels     = unname(nutrient_labels),
     total_cost = sum(ingredients$cost * inclusion),
     objective  = result$objval,
     status     = result$status
@@ -189,9 +215,10 @@ format_solution <- function(result) {
     label_width, names(inclusion), 100 * inclusion, 100 * inclusion
   )
 
+  nut_width <- max(nchar(result$labels), 18)
   nut_lines <- sprintf(
-    "  %-18s %10.2f %10.2f %10.2f",
-    NUTRIENT_LABELS[NUTRIENTS], result$targets, result$achieved,
+    "  %-*s %10.2f %10.2f %10.2f",
+    nut_width, result$labels, result$targets, result$achieved,
     round(result$achieved - result$targets, 2) + 0  # + 0 avoids "-0.00"
   )
 
@@ -207,7 +234,7 @@ format_solution <- function(result) {
     mix_lines,
     "",
     "Nutrient composition of the mix:",
-    sprintf("  %-18s %10s %10s %10s", "", "Target", "Achieved", "Difference"),
+    sprintf("  %-*s %10s %10s %10s", nut_width, "", "Target", "Achieved", "Difference"),
     nut_lines,
     "",
     if (result$mode == "target_matching") {
@@ -270,13 +297,8 @@ read_ingredient_csv <- function(path) {
          paste(dups, collapse = ", "), ".", call. = FALSE)
   }
 
-  # Parses a character column as numbers, accepting "," as decimal separator
-  parse_number_col <- function(x) {
-    suppressWarnings(as.numeric(str_replace(str_trim(x), ",", ".")))
-  }
-
   for (col in NUTRIENTS) {
-    values <- parse_number_col(data[[col]])
+    values <- parse_decimal(data[[col]])
     bad <- which(is.na(values))
     if (length(bad) > 0) {
       stop("Column '", col, "' must contain a number in every row. ",
@@ -288,7 +310,7 @@ read_ingredient_csv <- function(path) {
 
   if ("cost" %in% names(data)) {
     raw <- data$cost
-    data$cost <- parse_number_col(raw)
+    data$cost <- parse_decimal(raw)
     bad <- which((is.na(data$cost) & !is.na(raw) & str_trim(raw) != "") |
                    (!is.na(data$cost) & data$cost < 0))
     if (length(bad) > 0) {
