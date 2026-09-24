@@ -1,4 +1,22 @@
+# =============================================================================
+# data_prep.R - load and prepare the feed ingredient data
+#
+# Creates two global data frames that are used by the tab modules:
+#
+#   feed_data            - one row per ingredient of the IAFFD Feed Ingredient
+#                          Composition Database (FICD) export in data/.
+#                          Columns: category1, category2, ingredient, protein,
+#                          lipid, carbohydrate, ash (all in %), energy (MJ/kg).
+#   feed_data_summarised - one row per ingredient category (category1) with
+#                          the mean nutrient values of its ingredients.
+#
+# To update the database, replace the CSV in data/ and adjust the file name
+# below.
+# =============================================================================
+
+
 # IAFFD - full----
+# Categories are derived from the first digit(s) of the FICD ingredient code.
 feed_data <- read_csv("data/FICD 2025-10-27.csv") %>%
   rename_with(str_to_lower) %>%
   mutate(
@@ -35,6 +53,7 @@ print(head(feed_data))
 
 
 # IAFFD - summarised----
+# Mean composition per category; used by the "Simplified" tab.
 feed_data_summarised <- feed_data %>%
   group_by(category1) %>%
   summarise(
@@ -50,6 +69,7 @@ print("Feed data successfully summarised!")
 print(head(feed_data_summarised))
 
 
+
 # test <- feed_data %>%
 #   mutate(
 #     part1 = str_split_fixed(ingredient, ",", 2)[, 1],
@@ -57,4 +77,3 @@ print(head(feed_data_summarised))
 #   )
 #
 # unique(test$part1)
-

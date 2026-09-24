@@ -5,7 +5,61 @@
 
 ### An RShiny app for linear feed formulation
 
-Lorem ipsum dolores ahmet tacitus apollodorus servus est.
+FeedR calculates the inclusion rates of feed ingredients needed to reach a
+targeted nutrient composition (protein, lipid, carbohydrate, ash and gross
+energy). Under the hood, the formulation is solved as a linear programming
+problem with [lpSolve](https://cran.r-project.org/package=lpSolve), either
+
+- minimising the deviation from the nutrient targets (default), or
+- minimising the cost of the mix while meeting every nutrient target
+  (least-cost formulation).
+
+The FAQ tab of the app explains the mathematical model in detail.
+
+### Tabs
+
+| Tab        | Ingredients offered                                              |
+|------------|------------------------------------------------------------------|
+| Simplified | Ingredient categories with averaged nutrient values              |
+| Full       | Individual ingredients of the feed ingredient database           |
+| Import     | Your own ingredient list, uploaded as a CSV file                 |
+| FAQ        | How the formulation works, how to enter costs, CSV format        |
+
+In the *Selected Ingredients* table only the cost column can be edited;
+nutrient values are fixed.
+
+### CSV import format
+
+One row per ingredient with the columns `ingredient`, `protein`, `lipid`,
+`carbohydrate`, `ash` (all in %) and `energy` (MJ/kg). Optional columns are
+`cost` (price per kg) and `category`. Comma- and semicolon-separated files are
+accepted. A template can be downloaded on the Import tab.
+
+### Running the app
+
+```r
+install.packages(c("shiny", "lpSolve", "tidyverse", "DT"))
+shiny::runApp()  # from the repository root
+```
+
+### Code structure
+
+```
+app.R                      entry point; sources all files in order
+dependencies.R             required packages
+code/
+  data_prep.R              loads the ingredient database (feed_data, feed_data_summarised)
+  helper_functions.R       LP formulation, selection handling, CSV import, output formatting
+  ui.R / server.R          top-level UI and server combining the tabs
+  modules/
+    formulation.R          shared UI and server logic of all formulation tabs
+    ui_summary.R, server_summary.R   "Simplified" tab
+    ui_full.R, server_full.R         "Full" tab
+    ui_import.R, server_import.R     "Import" tab
+    ui_faq.R                         "FAQ" tab
+data/                      feed ingredient composition database (CSV)
+www/style.css              custom styling
+```
 
 ### Data sources
 
