@@ -57,10 +57,10 @@ formulation_ui <- function(id, sidebar_top = NULL, main_top = NULL) {
 
         h3("Selected Ingredients"),
         helpText(
-          "Nutrient values are fixed. Double-click a cell in the cost, min.",
-          "inclusion or max. inclusion column, enter the value and click",
-          "outside the cell (or press Tab) to save it. Costs are required for",
-          "least-cost formulation. Inclusion limits (% of the mix) are optional."
+          "Only the cost and inclusion limit columns can be edited:",
+          "double-click a cell, enter the value and click outside the cell",
+          "(or press Tab) to save it. Costs are required for least-cost",
+          "formulation. Inclusion limits (% of the mix) are optional."
         ),
         DTOutput(ns("selected_feed_table")),
 
@@ -106,6 +106,10 @@ target_input_row <- function(ns, nutrient, label, value) {
 #' @param label_col name of the column that identifies an ingredient.
 #' @param label_title column header used for `label_col`.
 #' @param empty_message message shown when `available_data()` is empty.
+#' @param show_selected_nutrients whether the selected-ingredients table shows
+#'   the nutrient columns. They are always kept in the data (the formulation
+#'   needs them); hiding them only avoids repeating the values already shown
+#'   in the available-ingredients table.
 #' @return a list with
 #'   * `clear()`: function that empties the selection and the solution
 #'     (e.g. when the underlying data is replaced),
@@ -113,7 +117,8 @@ target_input_row <- function(ns, nutrient, label, value) {
 setup_formulation <- function(input, output, session, available_data,
                               label_col = "ingredient",
                               label_title = "Ingredient",
-                              empty_message = "No ingredients available.") {
+                              empty_message = "No ingredients available.",
+                              show_selected_nutrients = TRUE) {
 
   # Module id (e.g. "full"), used to tag log messages
   log_ctx <- sub("-$", "", session$ns(""))
@@ -177,6 +182,13 @@ setup_formulation <- function(input, output, session, available_data,
 
 
   # Selected ingredients (only cost and inclusion limits are editable) ----
+
+  # Columns of the selection shown in the table (and thus the mapping from
+  # DT column index to data column used when a cell is edited)
+  displayed_columns <- function(selection) {
+    if (show_selected_nutrients) names(selection) else setdiff(names(selection), NUTRIENTS)
+  }
+
   output$selected_feed_table <- renderDT({
     selection_version()
     selection <- isolate(selected_ingredients())
@@ -185,26 +197,28 @@ setup_formulation <- function(input, output, session, available_data,
                        rownames = FALSE, options = list(dom = "t")))
     }
 
+    shown <- displayed_columns(selection)
+
     # DT column indices are 0-based (no row names shown); lock all columns
     # except the editable ones
-    editable_index <- which(names(selection) %in% EDITABLE_SELECTION_COLUMNS) - 1
-    locked_columns <- setdiff(seq_along(selection) - 1, editable_index)
+    editable_index <- which(shown %in% EDITABLE_SELECTION_COLUMNS) - 1
+    locked_columns <- setdiff(seq_along(shown) - 1, editable_index)
 
     datatable(
-      selection,
+      selection[, shown, drop = FALSE],
       rownames = FALSE,
       selection = "none",
-      colnames = column_titles(names(selection), label_col, label_title),
+      colnames = column_titles(shown, label_col, label_title),
       editable = list(target = "cell", disable = list(columns = locked_columns)),
       options = list(dom = "tip", pageLength = 25)
     ) %>%
-      formatRound(which(names(selection) %in% NUTRIENTS), digits = 2)
+      formatRound(which(shown %in% NUTRIENTS), digits = 2)
   }, server = FALSE)  # client-side: edited cells are updated in the browser
 
   observeEvent(input$selected_feed_table_cell_edit, {
     edit <- input$selected_feed_table_cell_edit
     selection <- selected_ingredients()
-    column <- names(selection)[edit$col + 1]
+    column <- displayed_columns(selection)[edit$col + 1]
     ingredient <- selection[[label_col]][edit$row]
 
     # Defensive check: only the editable columns may be changed

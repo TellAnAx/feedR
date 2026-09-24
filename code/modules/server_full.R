@@ -32,7 +32,8 @@ server_full <- function(id) {
       input, output, session,
       available_data = filtered_data,
       label_col = "ingredient",
-      label_title = "Ingredient"
+      label_title = "Ingredient",
+      show_selected_nutrients = FALSE  # already shown in the available table
     )
   })
 }

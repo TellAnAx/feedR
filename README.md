@@ -34,6 +34,9 @@ model in detail.
 
 In the *Selected Ingredients* table only the cost and inclusion limit
 (min./max. inclusion) columns can be edited; nutrient values are fixed.
+On the Simplified and Full tabs this table does not repeat the nutrient
+values, which are already shown in the *Available Ingredients* table
+(they are still used for the formulation).
 
 ### CSV import format
 
